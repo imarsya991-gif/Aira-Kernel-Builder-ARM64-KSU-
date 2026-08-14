@@ -203,8 +203,8 @@ jobs:
             MAKE_ARGS="$MAKE_ARGS LOCALVERSION=${{ inputs.LOCALVERSION }}"
           fi
           
-          ./scripts/config --file $OUT_DIR/.config --set-str LITTLE_CPU_MASK 0xf
-          ./scripts/config --file $OUT_DIR/.config --set-str BIG_CPU_MASK 0xf0
+          ./scripts/config --file $OUT_DIR/.config --set-str LITTLE_CPU_MASK
+          ./scripts/config --file $OUT_DIR/.config --set-str BIG_CPU_MASK
           
           make $MAKE_ARGS olddefconfig
           make $MAKE_ARGS -j$(nproc --all) 2>&1 | tee build.log
