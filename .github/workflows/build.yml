@@ -172,7 +172,7 @@ jobs:
           if [ "${{ inputs.USE_KSU }}" == "KernelSU" ]; then
             curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -
           elif [ "${{ inputs.USE_KSU }}" == "KernelSU-Next" ]; then
-            curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s next
+            curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s v1.1.1
           fi
 
       - name: 🔧 Export toolchain path & vars
