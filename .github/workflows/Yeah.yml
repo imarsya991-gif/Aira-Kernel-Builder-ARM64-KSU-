@@ -88,6 +88,12 @@ jobs:
             curl -LSs https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh | bash -s next
           fi
 
+      - name: Clean Legacy Localversion Files
+        working-directory: ${{ env.KERNEL_DIR }}
+        run: |
+          # Menghapus file localversion bawaan repository agar string versi tidak panjang/over 64 chars
+          rm -f localversion*
+
       - name: Fix Legacy Kernel DTC & YYLLOC Issues
         working-directory: ${{ env.KERNEL_DIR }}
         run: |
@@ -139,7 +145,7 @@ jobs:
         run: |
           set -o pipefail
 
-          # Truncate / Reset EXTRAVERSION bawaan agar string versi tidak melebihi 64 karakter
+          # Reset EXTRAVERSION bawaan dari Makefile utama
           sed -i 's/^EXTRAVERSION =.*/EXTRAVERSION =/g' Makefile || true
 
           export PATH="$GITHUB_WORKSPACE/$CLANG_DIR/bin:$PATH"
