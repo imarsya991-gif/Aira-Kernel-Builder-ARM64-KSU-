@@ -60,7 +60,7 @@ env:
 
 jobs:
   build:
-    runs-on: ubuntu-22.04   # 🔥 WAJIB turun
+    runs-on: ubuntu-22.04
 
     steps:
       - uses: actions/checkout@v4
@@ -143,14 +143,24 @@ jobs:
         id: img
         working-directory: ${{ env.KERNEL_DIR }}
         run: |
-          IMAGE=$(find $OUT_DIR/arch/arm64/boot -name "Image*" | head -n1)
-          echo "IMAGE=$IMAGE"
+          IMAGE=$(find $OUT_DIR/arch/arm64/boot -type f -name "Image*" | head -n1)
+
+          echo "Ketemu: $IMAGE"
+
+          if [ -z "$IMAGE" ]; then
+            echo "❌ Image gak ketemu!"
+            exit 1
+          fi
+
           echo "image_path=$IMAGE" >> $GITHUB_OUTPUT
 
       - name: Pack AnyKernel3
         run: |
           git clone --depth=1 "${{ inputs.ANYKERNEL3_URL }}" "$AK3_DIR"
-          cp "$KERNEL_DIR/${{ steps.img.outputs.image_path }}" "$AK3_DIR/"
+
+          echo "Copy kernel image..."
+          cp "${{ steps.img.outputs.image_path }}" "$AK3_DIR/"
+
           cd "$AK3_DIR"
           zip -r9 ../kernel.zip .
 
