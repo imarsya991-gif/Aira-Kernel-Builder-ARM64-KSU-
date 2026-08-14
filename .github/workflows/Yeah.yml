@@ -16,8 +16,9 @@ on:
         required: true
         type: string
       LOCALVERSION:
-        description: 'Localversion tambahan (Opsional)'
+        description: 'Localversion tambahan (misal: -ARS-KERNEL)'
         required: false
+        default: "-ARS-KERNEL"
         type: string
       BUILD_USER:
         required: true
@@ -94,7 +95,7 @@ jobs:
           sed -i 's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/' scripts/dtc/dtc-parser.tab.c || true
           sed -i 's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/' scripts/dtc/dtc-lexer.lex.c_shipped || true
 
-      - name: Execute Defconfig
+      - name: Execute Defconfig & Apply Performance Tweaks
         working-directory: ${{ env.KERNEL_DIR }}
         run: |
           export PATH="$GITHUB_WORKSPACE/$CLANG_DIR/bin:$PATH"
@@ -102,6 +103,28 @@ jobs:
             CROSS_COMPILE=aarch64-linux-gnu- \
             CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
             ${{ inputs.KERNEL_DEFCONFIG }}
+
+          # =========================================================
+          # OPTIMASI PERFORMA KERNEL & ZRAM
+          # =========================================================
+          # 1. ZRAM 3GB (3072 MB)
+          scripts/config --file $OUT_DIR/.config --enable CONFIG_ZRAM
+          scripts/config --file $OUT_DIR/.config --set-val CONFIG_ZRAM_DEF_SIZE 3072
+
+          # 2. Set CPU Governor Utama ke Interactive
+          scripts/config --file $OUT_DIR/.config --enable CONFIG_CPU_FREQ_GOV_INTERACTIVE
+          scripts/config --file $OUT_DIR/.config --enable CONFIG_CPU_FREQ_DEFAULT_GOV_INTERACTIVE
+
+          # 3. TCP Westwood untuk Ping Game Online Lebih Stabil
+          scripts/config --file $OUT_DIR/.config --enable CONFIG_TCP_CONG_WESTWOOD
+          scripts/config --file $OUT_DIR/.config --set-str CONFIG_DEFAULT_TCP_CONG "westwood"
+
+          # 4. Matikan Kernel Debugging Overhead (Meningkatkan Performa)
+          scripts/config --file $OUT_DIR/.config --disable CONFIG_DEBUG_INFO
+          scripts/config --file $OUT_DIR/.config --disable CONFIG_SLUB_DEBUG
+          scripts/config --file $OUT_DIR/.config --disable CONFIG_KPROBES
+          scripts/config --file $OUT_DIR/.config --disable CONFIG_FTRACE
+          # =========================================================
 
       - name: Build Kernel
         working-directory: ${{ env.KERNEL_DIR }}
@@ -133,6 +156,8 @@ jobs:
 
           if [ -n "${{ inputs.LOCALVERSION }}" ]; then
             MAKE_ARGS="$MAKE_ARGS LOCALVERSION=${{ inputs.LOCALVERSION }}"
+          else
+            MAKE_ARGS="$MAKE_ARGS LOCALVERSION=-ARS-KERNEL"
           fi
 
           make $MAKE_ARGS -j$(nproc --all) 2>&1 | tee build.log
@@ -181,7 +206,22 @@ jobs:
           fi
 
           cd AnyKernel3
-          ZIP_NAME="Kernel-${{ inputs.BUILD_USER }}-${{ inputs.USE_KSU }}-$(date +'%Y%m%d-%H%M').zip"
+
+          # =========================================================
+          # SETTING NAMA KERNEL & DEVICE RECOVERY
+          # =========================================================
+          sed -i "s/kernel.string=.*/kernel.string=ARS Kernel by ${{ inputs.BUILD_USER }}/g" anykernel.sh
+
+          sed -i "s/device.name1=.*/device.name1=lavender/g" anykernel.sh
+          sed -i "s/device.name2=.*/device.name2=Redmi Note 7/g" anykernel.sh
+          sed -i "s/device.name3=.*/device.name3=/g" anykernel.sh
+          sed -i "s/device.name4=.*/device.name4=/g" anykernel.sh
+          sed -i "s/device.name5=.*/device.name5=/g" anykernel.sh
+
+          sed -i 's|block=auto;|block=/dev/block/bootdevice/by-name/boot;|g' anykernel.sh
+          # =========================================================
+
+          ZIP_NAME="ARSKernel-${{ inputs.BUILD_USER }}-${{ inputs.USE_KSU }}-$(date +'%Y%m%d-%H%M').zip"
           zip -r9 "$ZIP_NAME" * -x .git README.md *placeholder
           
           echo "zip_path=$GITHUB_WORKSPACE/AnyKernel3/$ZIP_NAME" >> $GITHUB_OUTPUT
