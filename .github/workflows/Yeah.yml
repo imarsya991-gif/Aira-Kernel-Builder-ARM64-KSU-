@@ -145,6 +145,13 @@ jobs:
           echo "Isi folder out:"
           ls -R $OUT_DIR || true
 
+      - name: Upload Build Log (Selalu Diunggah)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: ${{ env.KERNEL_DIR }}/build.log
+
       - name: Find Image & Prepare AnyKernel3 Zip
         id: img
         working-directory: ${{ env.KERNEL_DIR }}
@@ -176,7 +183,7 @@ jobs:
             cp "$DTB" AnyKernel3/dtb || true
           fi
 
-          DTBO=$(find $GITHUB_WORKSPACE/$KERNEL_DIR/$OUT_DIR/arch/arm64/boot -name "dtbo.img" 2>/dev/null | head -n1)
+          DTBO=$(find $GITHUB_WORKSPACE/$KERNEL_DIR/$OUT_DIR/arch/arm64/boot/dtbo.img 2>/dev/null | head -n1)
           if [ -n "$DTBO" ]; then
             cp "$DTBO" AnyKernel3/dtbo.img || true
           fi
