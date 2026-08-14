@@ -1,4 +1,4 @@
-name: 🤖 Build Android Kernel 4.4 (Proton Clang)
+name: 🤖 Build Android Kernel 4.4 (AOSP Clang)
 
 on:
   workflow_dispatch:
@@ -70,14 +70,12 @@ jobs:
         run: |
           git clone --depth=1 -b "${{ inputs.KERNEL_BRANCH }}" "${{ inputs.KERNEL_URL }}" "$KERNEL_DIR"
 
-      - name: Download & Extract Proton Clang 12
+      - name: Download & Extract AOSP Clang 11 (r383902)
         run: |
           mkdir -p "$CLANG_DIR"
-          wget -q https://raw.githubusercontent.com/kdrag0n/proton-clang/master/sum.txt -O sum.txt
-          # Menggunakan Proton Clang 12
-          wget -q https://github.com/kdrag0n/proton-clang/tarball/master -O proton-clang.tar.gz
-          tar -xf proton-clang.tar.gz -C "$CLANG_DIR" --strip-components=1
-          rm proton-clang.tar.gz sum.txt
+          wget -q https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/android11-release/clang-r383902.tar.gz
+          tar -xf clang-r383902.tar.gz -C "$CLANG_DIR"
+          rm clang-r383902.tar.gz
 
       - name: Setup KernelSU
         if: inputs.USE_KSU != 'none'
@@ -92,10 +90,11 @@ jobs:
       - name: Fix Legacy Kernel DTC & YYLLOC Issues
         working-directory: ${{ env.KERNEL_DIR }}
         run: |
+          # Fix yylloc multiple definition pada GCC 10+
           sed -i 's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/' scripts/dtc/dtc-parser.tab.c || true
           sed -i 's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/' scripts/dtc/dtc-lexer.lex.c_shipped || true
 
-      - name: Execute Defconfig & Safe Performance Boost
+      - name: Execute Defconfig
         working-directory: ${{ env.KERNEL_DIR }}
         run: |
           export PATH="$GITHUB_WORKSPACE/$CLANG_DIR/bin:$PATH"
@@ -104,27 +103,10 @@ jobs:
             CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
             ${{ inputs.KERNEL_DEFCONFIG }}
 
-          # =========================================================
-          # BOOST AMAN & ANTI-BOOTLOOP (ZRAM 3GB + INTERACTIVE)
-          # =========================================================
-          scripts/config --file $OUT_DIR/.config --enable CONFIG_ZRAM
-          scripts/config --file $OUT_DIR/.config --set-val CONFIG_ZRAM_DEF_SIZE 3072
-
-          scripts/config --file $OUT_DIR/.config --enable CONFIG_CPU_FREQ_GOV_INTERACTIVE
-          scripts/config --file $OUT_DIR/.config --enable CONFIG_CPU_FREQ_DEFAULT_GOV_INTERACTIVE
-
-          scripts/config --file $OUT_DIR/.config --enable CONFIG_TCP_CONG_WESTWOOD
-          scripts/config --file $OUT_DIR/.config --set-str CONFIG_DEFAULT_TCP_CONG "westwood"
-
-          scripts/config --file $OUT_DIR/.config --disable CONFIG_FTRACE
-          scripts/config --file $OUT_DIR/.config --disable CONFIG_SCHED_DEBUG
-          # =========================================================
-
       - name: Build Kernel
         working-directory: ${{ env.KERNEL_DIR }}
         run: |
           set -o pipefail
-          sed -i 's/^EXTRAVERSION =.*/EXTRAVERSION =/g' Makefile || true
 
           export PATH="$GITHUB_WORKSPACE/$CLANG_DIR/bin:$PATH"
           export ARCH=arm64
@@ -143,7 +125,7 @@ jobs:
           CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
           CONFIG_LOCALVERSION_AUTO=n"
 
-          if [ "${{ inputs.USE_LTO }}" == "thin" ]; then
+[14.08.26 | 10.48.40 PM] if [ "${{ inputs.USE_LTO }}" == "thin" ]; then
             MAKE_ARGS="$MAKE_ARGS LTO_CLANG_THIN=1"
           elif [ "${{ inputs.USE_LTO }}" == "full" ]; then
             MAKE_ARGS="$MAKE_ARGS LTO_CLANG_FULL=1"
@@ -167,9 +149,11 @@ jobs:
         working-directory: ${{ env.KERNEL_DIR }}
         run: |
           IMAGE=$(find $PWD/$OUT_DIR/arch/arm64/boot -name "Image.gz-dtb" 2>/dev/null | head -n1)
+
           if [ -z "$IMAGE" ]; then
             IMAGE=$(find $PWD/$OUT_DIR/arch/arm64/boot -name "Image.gz" 2>/dev/null | head -n1)
           fi
+
           if [ -z "$IMAGE" ]; then
             IMAGE=$(find $PWD/$OUT_DIR/arch/arm64/boot -name "Image" 2>/dev/null | head -n1)
           fi
@@ -180,6 +164,7 @@ jobs:
           fi
 
           echo "image_path=$IMAGE" >> $GITHUB_OUTPUT
+          echo "Ketemu Kernel Image: $IMAGE"
 
           cd $GITHUB_WORKSPACE
           git clone --depth=1 https://github.com/osm0sis/AnyKernel3 AnyKernel3
@@ -196,7 +181,7 @@ jobs:
           fi
 
           cd AnyKernel3
-          ZIP_NAME="Kernel-Proton-${{ inputs.BUILD_USER }}-${{ inputs.USE_KSU }}-$(date +'%Y%m%d-%H%M').zip"
+          ZIP_NAME="Kernel-${{ inputs.BUILD_USER }}-${{ inputs.USE_KSU }}-$(date +'%Y%m%d-%H%M').zip"
           zip -r9 "$ZIP_NAME" * -x .git README.md *placeholder
           
           echo "zip_path=$GITHUB_WORKSPACE/AnyKernel3/$ZIP_NAME" >> $GITHUB_OUTPUT
@@ -207,3 +192,9 @@ jobs:
         with:
           name: ${{ steps.img.outputs.zip_name }}
           path: ${{ steps.img.outputs.zip_path }}
+
+      - name: Upload Raw Image File (Backup)
+        uses: actions/upload-artifact@v4
+        with:
+          name: raw-kernel-image
+          path: ${{ steps.img.outputs.image_path }}
