@@ -1,0 +1,280 @@
+name: 🛠️ Build Android Kernel
+
+on:
+  workflow_dispatch:
+    inputs:
+      KERNEL_URL:
+        description: "🔗 Kernel source URL (git)"
+        required: true
+        type: string
+
+      KERNEL_BRANCH:
+        description: "🌿 Kernel branch"
+        required: true
+        type: string
+
+      KERNEL_DEFCONFIG:
+        description: "⚙️ Defconfig (contoh: lavender_defconfig)"
+        required: true
+        type: string
+
+      LOCALVERSION:
+        description: "🏷️ Custom localversion (Nama)"
+        required: false
+        type: string
+
+      BUILD_USER:
+        description: "👤 Custom userkernel (Nama user kernel)"
+        required: true
+        default: "xiaomi"
+        type: string
+
+      BUILD_HOST:
+        description: "🖥️ Custom hostkernel (Nama host kernel)"
+        required: true
+        default: "redmi"
+        type: string
+
+      USE_KSU:
+        description: "🩹 Enable KernelSU?"
+        required: true
+        default: "none"
+        type: choice
+        options:
+          - none
+          - KernelSU
+          - KernelSU-Next
+
+      ANYKERNEL3_URL:
+        description: "📦 AnyKernel3 repo URL"
+        required: true
+        default: "https://github.com/osm0sis/AnyKernel3"
+        type: string
+
+      ANYKERNEL3_BRANCH:
+        description: "🌿 AnyKernel3 branch"
+        required: false
+        default: "master"
+        type: string
+
+      CLANG_SOURCE:
+        description: "🧰 Pilih Clang toolchain"
+        required: true
+        default: "neutron"
+        type: choice
+        options:
+          - neutron
+          - proton
+          - aosp
+          - weebx
+          - zyc
+          - custom
+
+      CUSTOM_CLANG_URL:
+        description: "🔗 (Opsional) URL clang custom kalau pilih 'custom' di atas"
+        required: false
+        type: string
+
+      USE_LTO:
+        description: "🚀 LTO mode"
+        required: true
+        default: "none"
+        type: choice
+        options:
+          - none
+          - thin
+          - full
+
+      ARCH:
+        description: "🏗️ Target arch"
+        required: true
+        default: "arm64"
+        type: choice
+        options:
+          - arm64
+          - arm
+
+env:
+  KERNEL_DIR: kernel_source
+  AK3_DIR: AnyKernel3
+  CLANG_DIR: clang
+  OUT_DIR: out
+
+jobs:
+  build:
+    name: Build Kernel
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📋 Checkout tooling repo
+        uses: actions/checkout@v4
+
+      - name: 📦 Install dependencies
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y \
+            bc bison flex libssl-dev libelf-dev \
+            build-essential python3 python3-pip \
+            curl git zip unzip wget ccache \
+            libncurses-dev rsync \
+            gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu \
+            gcc-arm-linux-gnueabi binutils-arm-linux-gnueabi
+
+      - name: 📥 Clone kernel source
+        run: |
+          git clone --depth=1 -b "${{ inputs.KERNEL_BRANCH }}" "${{ inputs.KERNEL_URL }}" "$KERNEL_DIR"
+
+      - name: 🧰 Cache Clang toolchain
+        id: clang-cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.CLANG_DIR }}
+          key: clang-${{ inputs.CLANG_SOURCE }}-${{ inputs.CUSTOM_CLANG_URL }}
+
+      - name: ⬇️ Download Clang (Neutron)
+        if: inputs.CLANG_SOURCE == 'neutron' && steps.clang-cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p "$CLANG_DIR" && cd "$CLANG_DIR"
+          curl -LSs "https://raw.githubusercontent.com/Neutron-Toolchains/antman/main/antman" > antman
+          chmod +x antman
+          ./antman -S
+
+      - name: ⬇️ Download Clang (Proton)
+        if: inputs.CLANG_SOURCE == 'proton' && steps.clang-cache.outputs.cache-hit != 'true'
+        run: |
+          git clone --depth=1 https://github.com/kdrag0n/proton-clang "$CLANG_DIR"
+
+      - name: ⬇️ Download Clang (WeebX)
+        if: inputs.CLANG_SOURCE == 'weebx' && steps.clang-cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p "$CLANG_DIR" && cd "$CLANG_DIR"
+          curl -LSs "$(curl -s https://raw.githubusercontent.com/XSans0/WeebX-Clang/main/latest.txt)" -o weebx.tar.gz
+          tar -xf weebx.tar.gz
+          rm weebx.tar.gz
+
+      - name: ⬇️ Download Clang (ZyC)
+        if: inputs.CLANG_SOURCE == 'zyc' && steps.clang-cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p "$CLANG_DIR" && cd "$CLANG_DIR"
+          curl -LSs "$(curl -s https://raw.githubusercontent.com/ZyCromerZ/Clang/main/Clang-main-lasted.txt)" -o zyc.tar.gz
+          tar -xf zyc.tar.gz
+          rm zyc.tar.gz
+
+      - name: ⬇️ Download Clang (AOSP)
+        if: inputs.CLANG_SOURCE == 'aosp' && steps.clang-cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p "$CLANG_DIR" && cd "$CLANG_DIR"
+          AOSP_CLANG_VER=$(curl -s https://raw.githubusercontent.com/Mahad-X/AOSP-Clang/main/latest_version.txt || echo "r547379")
+          git clone --depth=1 https://gitlab.com/Mahad-X/AOSP-Clang.git . || \
+          curl -LSs "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/master/clang-${AOSP_CLANG_VER}.tar.gz" | tar -xz
+
+      - name: ⬇️ Download Clang (Custom URL)
+        if: inputs.CLANG_SOURCE == 'custom' && steps.clang-cache.outputs.cache-hit != 'true'
+        run: |
+          if [ -z "${{ inputs.CUSTOM_CLANG_URL }}" ]; then
+            echo "❌ CUSTOM_CLANG_URL kosong padahal pilih custom!"
+            exit 1
+          fi
+          mkdir -p "$CLANG_DIR" && cd "$CLANG_DIR"
+          curl -LSs "${{ inputs.CUSTOM_CLANG_URL }}" -o custom_clang.tar
+          tar -xf custom_clang.tar || unzip custom_clang.tar
+          rm -f custom_clang.tar
+
+      - name: 🩹 Setup KernelSU
+        if: inputs.USE_KSU != 'none'
+        working-directory: ${{ env.KERNEL_DIR }}
+        run: |
+          if [ "${{ inputs.USE_KSU }}" == "KernelSU" ]; then
+            curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -
+          elif [ "${{ inputs.USE_KSU }}" == "KernelSU-Next" ]; then
+            curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s next
+          fi
+
+      - name: 🔧 Export toolchain path & vars
+        run: |
+          echo "$GITHUB_WORKSPACE/$CLANG_DIR/bin" >> "$GITHUB_PATH"
+          echo "KBUILD_BUILD_USER=${{ inputs.BUILD_USER }}" >> "$GITHUB_ENV"
+          echo "KBUILD_BUILD_HOST=${{ inputs.BUILD_HOST }}" >> "$GITHUB_ENV"
+
+      - name: ⚙️ Generate defconfig
+        working-directory: ${{ env.KERNEL_DIR }}
+        run: |
+          make O=$OUT_DIR ARCH=${{ inputs.ARCH }} CC=clang LLVM=1 \
+            ${{ inputs.KERNEL_DEFCONFIG }}
+
+      - name: 🏗️ Build kernel
+        working-directory: ${{ env.KERNEL_DIR }}
+        run: |
+          MAKE_ARGS="ARCH=${{ inputs.ARCH }} O=$OUT_DIR CC=clang LLVM=1 CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi-"
+
+          if [ "${{ inputs.USE_LTO }}" == "thin" ]; then
+            MAKE_ARGS="$MAKE_ARGS LTO_CLANG_THIN=1"
+          elif [ "${{ inputs.USE_LTO }}" == "full" ]; then
+            MAKE_ARGS="$MAKE_ARGS LTO_CLANG_FULL=1"
+          fi
+
+          if [ -n "${{ inputs.LOCALVERSION }}" ]; then
+            MAKE_ARGS="$MAKE_ARGS LOCALVERSION=${{ inputs.LOCALVERSION }}"
+          fi
+
+          make $MAKE_ARGS -j$(nproc --all) 2>&1 | tee build.log
+
+      - name: 🔍 Detect kernel image output
+        id: find_image
+        working-directory: ${{ env.KERNEL_DIR }}
+        run: |
+          IMAGE_PATH=""
+          for name in Image.gz-dtb Image.gz Image-dtb Image; do
+            found=$(find $OUT_DIR/arch/${{ inputs.ARCH }}/boot -maxdepth 2 -name "$name" 2>/dev/null | head -n1)
+            if [ -n "$found" ]; then
+              IMAGE_PATH="$found"
+              break
+            fi
+          done
+
+          if [ -z "$IMAGE_PATH" ]; then
+            echo "❌ Gagal nemu kernel image hasil build. Cek build.log."
+            exit 1
+          fi
+
+          echo "image_path=$IMAGE_PATH" >> "$GITHUB_OUTPUT"
+          echo "✅ Ketemu image: $IMAGE_PATH"
+
+      - name: 📦 Clone AnyKernel3 & pack zip
+        run: |
+          git clone --depth=1 -b "${{ inputs.ANYKERNEL3_BRANCH }}" "${{ inputs.ANYKERNEL3_URL }}" "$AK3_DIR"
+          cp "$KERNEL_DIR/${{ steps.find_image.outputs.image_path }}" "$AK3_DIR/"
+          cd "$AK3_DIR"
+          ZIP_NAME="Kernel-${{ inputs.KERNEL_DEFCONFIG }}-$(date +'%Y%m%d-%H%M').zip"
+          zip -r9 "../$ZIP_NAME" . -x ".git*" -x "README.md"
+          echo "ZIP_NAME=$ZIP_NAME" >> "$GITHUB_ENV"
+
+      - name: 📤 Upload build log (kalau dibutuhkan buat debug)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: ${{ env.KERNEL_DIR }}/build.log
+          retention-days: 3
+
+      - name: 📤 Upload flashable zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ZIP_NAME }}
+          path: ${{ env.ZIP_NAME }}
+          retention-days: 14
+
+      - name: 🚀 Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: "Kernel Build #${{ github.run_number }}"
+          body: |
+            **Defconfig**: `${{ inputs.KERNEL_DEFCONFIG }}`
+            **Branch**: `${{ inputs.KERNEL_BRANCH }}`
+            **Clang**: `${{ inputs.CLANG_SOURCE }}`
+            **KSU**: `${{ inputs.USE_KSU }}`
+            **LTO**: `${{ inputs.USE_LTO }}`
+            **User**: `${{ inputs.BUILD_USER }}`
+            **Host**: `${{ inputs.BUILD_HOST }}`
+          files: ${{ env.ZIP_NAME }}
+          
