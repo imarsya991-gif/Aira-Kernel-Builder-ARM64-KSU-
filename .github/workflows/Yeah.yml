@@ -125,7 +125,7 @@ jobs:
           CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
           CONFIG_LOCALVERSION_AUTO=n"
 
-[14.08.26 | 10.48.40 PM] if [ "${{ inputs.USE_LTO }}" == "thin" ]; then
+            if [ "${{ inputs.USE_LTO }}" == "thin" ]; then
             MAKE_ARGS="$MAKE_ARGS LTO_CLANG_THIN=1"
           elif [ "${{ inputs.USE_LTO }}" == "full" ]; then
             MAKE_ARGS="$MAKE_ARGS LTO_CLANG_FULL=1"
