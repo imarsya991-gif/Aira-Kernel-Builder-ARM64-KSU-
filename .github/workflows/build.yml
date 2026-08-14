@@ -18,6 +18,33 @@ on:
         required: true
         type: string
 
+      LOCALVERSION:
+        description: "🏷️ Custom localversion (Nama)"
+        required: false
+        type: string
+
+      BUILD_USER:
+        description: "👤 Custom userkernel (Nama user kernel)"
+        required: true
+        default: "xiaomi"
+        type: string
+
+      BUILD_HOST:
+        description: "🖥️ Custom hostkernel (Nama host kernel)"
+        required: true
+        default: "redmi"
+        type: string
+
+      USE_KSU:
+        description: "🩹 Enable KernelSU?"
+        required: true
+        default: "none"
+        type: choice
+        options:
+          - none
+          - KernelSU
+          - KernelSU-Next
+
       ANYKERNEL3_URL:
         description: "📦 AnyKernel3 repo URL"
         required: true
@@ -48,16 +75,6 @@ on:
         required: false
         type: string
 
-      USE_KSU:
-        description: "🩹 Enable KernelSU?"
-        required: true
-        default: "none"
-        type: choice
-        options:
-          - none
-          - KernelSU
-          - KernelSU-Next
-
       USE_LTO:
         description: "🚀 LTO mode"
         required: true
@@ -67,23 +84,6 @@ on:
           - none
           - thin
           - full
-
-      LOCALVERSION:
-        description: "🏷️ Custom localversion (opsional, kosongkan kalau default)"
-        required: false
-        type: string
-
-      BUILD_USER:
-        description: "👤 KBUILD_BUILD_USER (Nama User Kernel)"
-        required: true
-        default: "xiaomi"
-        type: string
-
-      BUILD_HOST:
-        description: "🖥️ KBUILD_BUILD_HOST (Nama Host Kernel)"
-        required: true
-        default: "redmi"
-        type: string
 
       ARCH:
         description: "🏗️ Target arch"
