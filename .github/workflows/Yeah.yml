@@ -1,4 +1,4 @@
-Name: 🤖 Build Android Kernel (Stable)
+name: 🤖 Build Android Kernel (Stable)
 
 on:
   workflow_dispatch:
