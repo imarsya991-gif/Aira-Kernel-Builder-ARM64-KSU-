@@ -91,10 +91,10 @@ jobs:
         working-directory: ${{ env.KERNEL_DIR }}
         run: |
           # Fix yylloc multiple definition pada GCC 10+
-          sed -i 's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/' scripts/dtc/dtc-parser.tab.c 2>/dev/null || true
-          sed -i 's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/' scripts/dtc/dtc-lexer.lex.c_shipped 2>/dev/null || true
+          sed -i 's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/' scripts/dtc/dtc-parser.tab.c || true
+          sed -i 's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/' scripts/dtc/dtc-lexer.lex.c_shipped || true
 
-      - name: Execute Defconfig & Apply Extreme Performance Tweaks
+      - name: Execute Defconfig & Safe Performance Boost
         working-directory: ${{ env.KERNEL_DIR }}
         run: |
           export PATH="$GITHUB_WORKSPACE/$CLANG_DIR/bin:$PATH"
@@ -104,33 +104,23 @@ jobs:
             ${{ inputs.KERNEL_DEFCONFIG }}
 
           # =========================================================
-          # OPTIMASI PERFORMA MAKSIMAL & ZRAM 3GB
+          # BOOST AMAN & ANTI-BOOTLOOP (ZRAM 3GB + INTERACTIVE)
           # =========================================================
           # 1. ZRAM 3GB (3072 MB)
           scripts/config --file $OUT_DIR/.config --enable CONFIG_ZRAM
           scripts/config --file $OUT_DIR/.config --set-val CONFIG_ZRAM_DEF_SIZE 3072
 
-          # 2. CPU Governor Interactive
+          # 2. CPU Governor Interactive (Responsif & Smooth)
           scripts/config --file $OUT_DIR/.config --enable CONFIG_CPU_FREQ_GOV_INTERACTIVE
           scripts/config --file $OUT_DIR/.config --enable CONFIG_CPU_FREQ_DEFAULT_GOV_INTERACTIVE
 
-          # 3. Memory & Storage I/O Speed Boost
-          scripts/config --file $OUT_DIR/.config --disable CONFIG_MMC_RING_BUFFER
-          scripts/config --file $OUT_DIR/.config --disable CONFIG_MMC_SIMULATE_MAX_DISCARD
-
-          # 4. TCP Westwood (Low-latency Network untuk Game)
+          # 3. TCP Westwood (Low-latency Network untuk Game Online)
           scripts/config --file $OUT_DIR/.config --enable CONFIG_TCP_CONG_WESTWOOD
           scripts/config --file $OUT_DIR/.config --set-str CONFIG_DEFAULT_TCP_CONG "westwood"
 
-          # 5. Mematikan Debugging Overhead (Menghilangkan Stutter/Lag & Tingkatkan FPS)
-          scripts/config --file $OUT_DIR/.config --disable CONFIG_DEBUG_INFO
-          scripts/config --file $OUT_DIR/.config --disable CONFIG_SLUB_DEBUG
-          scripts/config --file $OUT_DIR/.config --disable CONFIG_KPROBES
+          # 4. Hanya mematikan debug yang aman (tidak merusak driver hardware)
           scripts/config --file $OUT_DIR/.config --disable CONFIG_FTRACE
           scripts/config --file $OUT_DIR/.config --disable CONFIG_SCHED_DEBUG
-          scripts/config --file $OUT_DIR/.config --disable CONFIG_PROVE_LOCKING
-          scripts/config --file $OUT_DIR/.config --disable CONFIG_PAGE_POISONING
-          scripts/config --file $OUT_DIR/.config --disable CONFIG_PANIC_ON_OOPS
           # =========================================================
 
       - name: Build Kernel
@@ -138,7 +128,7 @@ jobs:
         run: |
           set -o pipefail
 
-          # Truncate / Reset EXTRAVERSION bawaan agar string versi tidak melebihi 64 karakter
+          # Reset EXTRAVERSION bawaan agar string versi aman di bawah 64 karakter (Anti-Gagal Build)
           sed -i 's/^EXTRAVERSION =.*/EXTRAVERSION =/g' Makefile || true
 
           export PATH="$GITHUB_WORKSPACE/$CLANG_DIR/bin:$PATH"
@@ -146,7 +136,7 @@ jobs:
           export SUBARCH=arm64
           export HOSTCFLAGS="-fcommon"
           export HOSTCXXFLAGS="-fcommon"
-          export KCFLAGS="-fno-stack-protector -Wno-error -O2"
+          export KCFLAGS="-fno-stack-protector -Wno-error"
           export KBUILD_BUILD_USER="${{ inputs.BUILD_USER }}"
           export KBUILD_BUILD_HOST="${{ inputs.BUILD_HOST }}"
 
