@@ -18,18 +18,6 @@ on:
         required: true
         type: string
 
-      BUILD_USER:
-        description: "👤 KBUILD_BUILD_USER (Nama User Kernel)"
-        required: true
-        default: "exxyrou"
-        type: string
-
-      BUILD_HOST:
-        description: "🖥️ KBUILD_BUILD_HOST (Nama Host Kernel)"
-        required: true
-        default: "mkjzt"
-        type: string
-
       ANYKERNEL3_URL:
         description: "📦 AnyKernel3 repo URL"
         required: true
@@ -83,6 +71,18 @@ on:
       LOCALVERSION:
         description: "🏷️ Custom localversion (opsional, kosongkan kalau default)"
         required: false
+        type: string
+
+      BUILD_USER:
+        description: "👤 KBUILD_BUILD_USER (Nama User Kernel)"
+        required: true
+        default: "xiaomi"
+        type: string
+
+      BUILD_HOST:
+        description: "🖥️ KBUILD_BUILD_HOST (Nama Host Kernel)"
+        required: true
+        default: "redmi"
         type: string
 
       ARCH:
@@ -186,7 +186,7 @@ jobs:
           if [ "${{ inputs.USE_KSU }}" == "KernelSU" ]; then
             curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -
           elif [ "${{ inputs.USE_KSU }}" == "KernelSU-Next" ]; then
-            curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s v1.1.1
+            curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s next
           fi
 
       - name: 🔧 Export toolchain path & vars
