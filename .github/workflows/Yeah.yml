@@ -160,7 +160,6 @@ jobs:
 
           MAKE_ARGS="ARCH=arm64 \
           O=$OUT_DIR \
-          CC=\"ccache clang\" \
           CLANG_TRIPLE=aarch64-linux-gnu- \
           CROSS_COMPILE=aarch64-linux-gnu- \
           CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
