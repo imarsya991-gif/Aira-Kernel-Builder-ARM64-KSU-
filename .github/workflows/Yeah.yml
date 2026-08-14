@@ -1,4 +1,4 @@
-name: 🤖 Build Android Kernel (Stable)
+name: 🤖 Build Android Kernel 4.4
 
 on:
   workflow_dispatch:
@@ -79,12 +79,6 @@ jobs:
         run: |
           git clone --depth=1 https://github.com/kdrag0n/proton-clang "$CLANG_DIR"
 
-      - name: Export Environment Variables
-        run: |
-          echo "$GITHUB_WORKSPACE/$CLANG_DIR/bin" >> $GITHUB_PATH
-          echo "KBUILD_BUILD_USER=${{ inputs.BUILD_USER }}" >> $GITHUB_ENV
-          echo "KBUILD_BUILD_HOST=${{ inputs.BUILD_HOST }}" >> $GITHUB_ENV
-
       - name: Setup KernelSU
         if: inputs.USE_KSU != 'none'
         working-directory: ${{ env.KERNEL_DIR }}
@@ -95,10 +89,20 @@ jobs:
             curl -LSs https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh | bash -s next
           fi
 
+      - name: Fix Legacy Kernel DTC & YYLLOC Issues
+        working-directory: ${{ env.KERNEL_DIR }}
+        run: |
+          # Fix yylloc multiple definition pada GCC baru
+          sed -i 's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/' scripts/dtc/dtc-parser.tab.c || true
+          sed -i 's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/' scripts/dtc/dtc-lexer.lex.c_shipped || true
+
       - name: Execute Defconfig
         working-directory: ${{ env.KERNEL_DIR }}
         run: |
-          make O=$OUT_DIR ARCH=arm64 CC=clang LLVM=1 LLVM_IAS=1 LD=ld.lld \
+          export PATH="$GITHUB_WORKSPACE/$CLANG_DIR/bin:$PATH"
+          make O=$OUT_DIR ARCH=arm64 CC=clang \
+            CROSS_COMPILE=aarch64-linux-gnu- \
+            CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
             ${{ inputs.KERNEL_DEFCONFIG }}
 
       - name: Build Kernel
@@ -111,14 +115,14 @@ jobs:
           export SUBARCH=arm64
           export HOSTCFLAGS="-fcommon"
           export HOSTCXXFLAGS="-fcommon"
-          export KCFLAGS="-fno-stack-protector"
+          export KCFLAGS="-fno-stack-protector -Wno-error"
+          export KBUILD_BUILD_USER="${{ inputs.BUILD_USER }}"
+          export KBUILD_BUILD_HOST="${{ inputs.BUILD_HOST }}"
 
           MAKE_ARGS="ARCH=arm64 \
           O=$OUT_DIR \
           CC=clang \
-          LLVM=1 \
-          LLVM_IAS=1 \
-          LD=ld.lld \
+          CLANG_TRIPLE=aarch64-linux-gnu- \
           CROSS_COMPILE=aarch64-linux-gnu- \
           CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
           CONFIG_LOCALVERSION_AUTO=n"
