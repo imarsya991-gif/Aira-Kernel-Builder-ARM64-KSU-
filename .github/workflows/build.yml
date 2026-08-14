@@ -202,7 +202,11 @@ jobs:
           if [ -n "${{ inputs.LOCALVERSION }}" ]; then
             MAKE_ARGS="$MAKE_ARGS LOCALVERSION=${{ inputs.LOCALVERSION }}"
           fi
-
+          
+          ./scripts/config --file $OUT_DIR/.config --set-str LITTLE_CPU_MASK "0f"
+          ./scripts/config --file $OUT_DIR/.config --set-str BIG_CPU_MASK "f0"
+          
+          make $MAKE_ARGS olddefconfig
           make $MAKE_ARGS -j$(nproc --all) 2>&1 | tee build.log
 
       - name: 🔍 Detect kernel image output
