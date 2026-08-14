@@ -1,4 +1,4 @@
-name: 🤖 Build Android Kernel (Stable)
+Name: 🤖 Build Android Kernel (Stable)
 
 on:
   workflow_dispatch:
@@ -55,7 +55,7 @@ env:
 
 jobs:
   build:
-    runs-on: ubuntu-22.04  # Jangan diganti
+    runs-on: ubuntu-22.04
 
     steps:
       - name: Checkout Repository
@@ -95,38 +95,33 @@ jobs:
             curl -LSs https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh | bash -s next
           fi
 
-      - name: Fix Old Kernel Issues (DTC Parser)
-        working-directory: ${{ env.KERNEL_DIR }}
-        run: |
-          sed -i 's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/' scripts/dtc/dtc-parser.tab.c || true
-
       - name: Execute Defconfig
         working-directory: ${{ env.KERNEL_DIR }}
         run: |
-          make O=$OUT_DIR ARCH=arm64 CC=clang LLVM=1 LLVM_IAS=0 LD=ld.lld \
+          make O=$OUT_DIR ARCH=arm64 CC=clang LLVM=1 LLVM_IAS=1 LD=ld.lld \
             ${{ inputs.KERNEL_DEFCONFIG }}
 
       - name: Build Kernel
         working-directory: ${{ env.KERNEL_DIR }}
         run: |
-          # Agar error pada make langsung menggagalkan workflow (tidak tertutup oleh tee)
           set -o pipefail
 
           export PATH="$GITHUB_WORKSPACE/$CLANG_DIR/bin:$PATH"
           export ARCH=arm64
           export SUBARCH=arm64
           export HOSTCFLAGS="-fcommon"
+          export HOSTCXXFLAGS="-fcommon"
           export KCFLAGS="-fno-stack-protector"
-          export LLVM_IAS=0
 
           MAKE_ARGS="ARCH=arm64 \
           O=$OUT_DIR \
           CC=clang \
           LLVM=1 \
-          LLVM_IAS=0 \
+          LLVM_IAS=1 \
           LD=ld.lld \
           CROSS_COMPILE=aarch64-linux-gnu- \
-          CROSS_COMPILE_ARM32=arm-linux-gnueabi-"
+          CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
+          CONFIG_LOCALVERSION_AUTO=n"
 
           if [ "${{ inputs.USE_LTO }}" == "thin" ]; then
             MAKE_ARGS="$MAKE_ARGS LTO_CLANG_THIN=1"
@@ -138,7 +133,7 @@ jobs:
             MAKE_ARGS="$MAKE_ARGS LOCALVERSION=${{ inputs.LOCALVERSION }}"
           fi
 
-          make $MAKE_ARGS -j$(nproc) 2>&1 | tee build.log
+          make $MAKE_ARGS -j$(nproc --all) 2>&1 | tee build.log
 
       - name: Debug Output Directory
         working-directory: ${{ env.KERNEL_DIR }}
@@ -150,7 +145,6 @@ jobs:
         id: img
         working-directory: ${{ env.KERNEL_DIR }}
         run: |
-          # Cari file kernel image (Absolute path dengan $PWD)
           IMAGE=$(find $PWD/$OUT_DIR/arch/arm64/boot -name "Image.gz-dtb" 2>/dev/null | head -n1)
 
           if [ -z "$IMAGE" ]; then
@@ -169,12 +163,10 @@ jobs:
           echo "image_path=$IMAGE" >> $GITHUB_OUTPUT
           echo "Ketemu Kernel Image: $IMAGE"
 
-          # Clone AnyKernel3 dan buat flashable zip
           cd $GITHUB_WORKSPACE
           git clone --depth=1 https://github.com/osm0sis/AnyKernel3 AnyKernel3
           cp "$IMAGE" AnyKernel3/
 
-          # Salin DTB / DTBO jika ada
           DTB=$(find $GITHUB_WORKSPACE/$KERNEL_DIR/$OUT_DIR/arch/arm64/boot/dts -name "*.dtb" 2>/dev/null | head -n1)
           if [ -n "$DTB" ]; then
             cp "$DTB" AnyKernel3/dtb || true
@@ -185,7 +177,6 @@ jobs:
             cp "$DTBO" AnyKernel3/dtbo.img || true
           fi
 
-          # Packing Zip
           cd AnyKernel3
           ZIP_NAME="Kernel-${{ inputs.BUILD_USER }}-${{ inputs.USE_KSU }}-$(date +'%Y%m%d-%H%M').zip"
           zip -r9 "$ZIP_NAME" * -x .git README.md *placeholder
