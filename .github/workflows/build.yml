@@ -190,6 +190,7 @@ jobs:
       - name: 🏗️ Build kernel
         working-directory: ${{ env.KERNEL_DIR }}
         run: |
+          set -o pipefail
           MAKE_ARGS="ARCH=${{ inputs.ARCH }} O=$OUT_DIR CC=clang LLVM=1 LLVM_IAS=1 CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi-"
 
           if [ "${{ inputs.USE_LTO }}" == "thin" ]; then
