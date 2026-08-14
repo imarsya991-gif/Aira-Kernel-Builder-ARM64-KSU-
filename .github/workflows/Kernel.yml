@@ -4,15 +4,19 @@ on:
   workflow_dispatch:
     inputs:
       KERNEL_URL:
+        description: 'URL Repository Kernel (HTTPS)'
         required: true
         type: string
       KERNEL_BRANCH:
+        description: 'Branch Kernel'
         required: true
         type: string
       KERNEL_DEFCONFIG:
+        description: 'Nama Defconfig (misal: vendor/sweet_user_defconfig)'
         required: true
         type: string
       LOCALVERSION:
+        description: 'Localversion tambahan (Opsional)'
         required: false
         type: string
       BUILD_USER:
@@ -51,12 +55,13 @@ env:
 
 jobs:
   build:
-    runs-on: ubuntu-22.04   # 🔥 jangan diganti
+    runs-on: ubuntu-22.04  # Jangan diganti
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout Repository
+        uses: actions/checkout@v4
 
-      - name: Install deps
+      - name: Install Dependencies
         run: |
           sudo apt update
           sudo apt install -y \
@@ -66,7 +71,7 @@ jobs:
             gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu \
             gcc-arm-linux-gnueabi binutils-arm-linux-gnueabi
 
-      - name: Clone kernel
+      - name: Clone Kernel Source
         run: |
           git clone --depth=1 -b "${{ inputs.KERNEL_BRANCH }}" "${{ inputs.KERNEL_URL }}" "$KERNEL_DIR"
 
@@ -74,7 +79,7 @@ jobs:
         run: |
           git clone --depth=1 https://github.com/kdrag0n/proton-clang "$CLANG_DIR"
 
-      - name: Export env
+      - name: Export Environment Variables
         run: |
           echo "$GITHUB_WORKSPACE/$CLANG_DIR/bin" >> $GITHUB_PATH
           echo "KBUILD_BUILD_USER=${{ inputs.BUILD_USER }}" >> $GITHUB_ENV
@@ -90,21 +95,23 @@ jobs:
             curl -LSs https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh | bash -s next
           fi
 
-      - name: Fix old kernel issues (dtc, dll)
+      - name: Fix Old Kernel Issues (DTC Parser)
         working-directory: ${{ env.KERNEL_DIR }}
         run: |
-          # Fix dtc yylloc error
           sed -i 's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/' scripts/dtc/dtc-parser.tab.c || true
 
-      - name: Defconfig
+      - name: Execute Defconfig
         working-directory: ${{ env.KERNEL_DIR }}
         run: |
           make O=$OUT_DIR ARCH=arm64 CC=clang LLVM=1 LLVM_IAS=0 LD=ld.lld \
             ${{ inputs.KERNEL_DEFCONFIG }}
 
-      - name: Build
+      - name: Build Kernel
         working-directory: ${{ env.KERNEL_DIR }}
         run: |
+          # Agar error pada make langsung menggagalkan workflow (tidak tertutup oleh tee)
+          set -o pipefail
+
           export PATH="$GITHUB_WORKSPACE/$CLANG_DIR/bin:$PATH"
           export ARCH=arm64
           export SUBARCH=arm64
@@ -133,37 +140,67 @@ jobs:
 
           make $MAKE_ARGS -j$(nproc) 2>&1 | tee build.log
 
-          # Stop kalau gagal
-          if grep -q "error:" build.log; then
-            echo "❌ Build gagal, cek build.log"
-            exit 1
-          fi
-
-      - name: Debug output
+      - name: Debug Output Directory
         working-directory: ${{ env.KERNEL_DIR }}
         run: |
           echo "Isi folder out:"
           ls -R $OUT_DIR || true
 
-      - name: Find Image
+      - name: Find Image & Prepare AnyKernel3 Zip
         id: img
         working-directory: ${{ env.KERNEL_DIR }}
         run: |
-          IMAGE=$(find $OUT_DIR/arch/arm64/boot -name "Image.gz-dtb" 2>/dev/null | head -n1)
+          # Cari file kernel image (Absolute path dengan $PWD)
+          IMAGE=$(find $PWD/$OUT_DIR/arch/arm64/boot -name "Image.gz-dtb" 2>/dev/null | head -n1)
 
           if [ -z "$IMAGE" ]; then
-            IMAGE=$(find $OUT_DIR/arch/arm64/boot -name "Image.gz" 2>/dev/null | head -n1)
+            IMAGE=$(find $PWD/$OUT_DIR/arch/arm64/boot -name "Image.gz" 2>/dev/null | head -n1)
           fi
 
           if [ -z "$IMAGE" ]; then
-            echo "❌ Image gak ketemu!"
+            IMAGE=$(find $PWD/$OUT_DIR/arch/arm64/boot -name "Image" 2>/dev/null | head -n1)
+          fi
+
+          if [ -z "$IMAGE" ]; then
+            echo "❌ Image kernel tidak ditemukan!"
             exit 1
           fi
 
           echo "image_path=$IMAGE" >> $GITHUB_OUTPUT
-          echo "Ketemu: $IMAGE"
+          echo "Ketemu Kernel Image: $IMAGE"
 
-      - uses: actions/upload-artifact@v4
+          # Clone AnyKernel3 dan buat flashable zip
+          cd $GITHUB_WORKSPACE
+          git clone --depth=1 https://github.com/osm0sis/AnyKernel3 AnyKernel3
+          cp "$IMAGE" AnyKernel3/
+
+          # Salin DTB / DTBO jika ada
+          DTB=$(find $GITHUB_WORKSPACE/$KERNEL_DIR/$OUT_DIR/arch/arm64/boot/dts -name "*.dtb" 2>/dev/null | head -n1)
+          if [ -n "$DTB" ]; then
+            cp "$DTB" AnyKernel3/dtb || true
+          fi
+
+          DTBO=$(find $GITHUB_WORKSPACE/$KERNEL_DIR/$OUT_DIR/arch/arm64/boot -name "dtbo.img" 2>/dev/null | head -n1)
+          if [ -n "$DTBO" ]; then
+            cp "$DTBO" AnyKernel3/dtbo.img || true
+          fi
+
+          # Packing Zip
+          cd AnyKernel3
+          ZIP_NAME="Kernel-${{ inputs.BUILD_USER }}-${{ inputs.USE_KSU }}-$(date +'%Y%m%d-%H%M').zip"
+          zip -r9 "$ZIP_NAME" * -x .git README.md *placeholder
+          
+          echo "zip_path=$GITHUB_WORKSPACE/AnyKernel3/$ZIP_NAME" >> $GITHUB_OUTPUT
+          echo "zip_name=$ZIP_NAME" >> $GITHUB_OUTPUT
+
+      - name: Upload Flashable Kernel (.zip)
+        uses: actions/upload-artifact@v4
         with:
-          name: kernel
+          name: ${{ steps.img.outputs.zip_name }}
+          path: ${{ steps.img.outputs.zip_path }}
+
+      - name: Upload Raw Image File (Backup)
+        uses: actions/upload-artifact@v4
+        with:
+          name: raw-kernel-image
           path: ${{ steps.img.outputs.image_path }}
