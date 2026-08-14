@@ -34,7 +34,7 @@ on:
         options: [none, KernelSU, KernelSU-Next]
       USE_LTO:
         required: true
-        default: "none"
+        default: "full"
         type: choice
         options: [none, thin, full]
       ARCH:
@@ -62,9 +62,22 @@ jobs:
           sudo apt install -y \
             bc bison flex libssl-dev libelf-dev \
             build-essential python3 curl git zip unzip wget \
-            libncurses-dev rsync \
+            libncurses-dev rsync ccache \
             gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu \
             gcc-arm-linux-gnueabi binutils-arm-linux-gnueabi
+
+      - name: Setup ccache
+        run: |
+          ccache --max-size=2G
+          echo "CCACHE_DIR=$HOME/.ccache" >> $GITHUB_ENV
+
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: ~/.ccache
+          key: ccache-${{ inputs.KERNEL_DEFCONFIG }}-${{ github.run_id }}
+          restore-keys: |
+            ccache-${{ inputs.KERNEL_DEFCONFIG }}-
 
       - name: Clone Kernel Source
         run: |
@@ -103,23 +116,51 @@ jobs:
             CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
             ${{ inputs.KERNEL_DEFCONFIG }}
 
+      - name: Tweak Config untuk Performa Maksimal
+        working-directory: ${{ env.KERNEL_DIR }}
+        run: |
+          export PATH="$GITHUB_WORKSPACE/$CLANG_DIR/bin:$PATH"
+          CFG="$OUT_DIR/.config"
+          SCRIPT="scripts/config"
+
+          # Optimasi compiler: pakai -O3 bukan -O2/-Os, matikan optimize-for-size
+          $SCRIPT --file "$CFG" -e CC_OPTIMIZE_FOR_PERFORMANCE_O3 || true
+          $SCRIPT --file "$CFG" -d CC_OPTIMIZE_FOR_SIZE || true
+
+          # Matikan overhead debug/tracing yang nggak perlu di build harian
+          $SCRIPT --file "$CFG" -d DEBUG_KERNEL || true
+          $SCRIPT --file "$CFG" -d DEBUG_INFO || true
+          $SCRIPT --file "$CFG" -d DEBUG_FS || true
+          $SCRIPT --file "$CFG" -d SCHED_DEBUG || true
+          $SCRIPT --file "$CFG" -d FTRACE || true
+          $SCRIPT --file "$CFG" -d KGDB || true
+          $SCRIPT --file "$CFG" -d FUNCTION_TRACER || true
+          $SCRIPT --file "$CFG" -d SCHEDSTATS || true
+
+          # HMP scheduler tetap aktif (sesuai preferensi sebelumnya)
+          $SCRIPT --file "$CFG" -e SCHED_HMP || true
+          $SCRIPT --file "$CFG" -e SCHED_HMP_CSTATE_AWARE || true
+
+          make O=$OUT_DIR ARCH=arm64 CC=clang olddefconfig
+
       - name: Build Kernel
         working-directory: ${{ env.KERNEL_DIR }}
         run: |
           set -o pipefail
 
-          export PATH="$GITHUB_WORKSPACE/$CLANG_DIR/bin:$PATH"
+          export PATH="/usr/lib/ccache:$GITHUB_WORKSPACE/$CLANG_DIR/bin:$PATH"
           export ARCH=arm64
           export SUBARCH=arm64
           export HOSTCFLAGS="-fcommon"
           export HOSTCXXFLAGS="-fcommon"
-          export KCFLAGS="-fno-stack-protector -Wno-error"
+          export KCFLAGS="-O3 -fomit-frame-pointer -fno-stack-protector -Wno-error"
           export KBUILD_BUILD_USER="${{ inputs.BUILD_USER }}"
           export KBUILD_BUILD_HOST="${{ inputs.BUILD_HOST }}"
+          export CC="ccache clang"
 
           MAKE_ARGS="ARCH=arm64 \
           O=$OUT_DIR \
-          CC=clang \
+          CC=\"ccache clang\" \
           CLANG_TRIPLE=aarch64-linux-gnu- \
           CROSS_COMPILE=aarch64-linux-gnu- \
           CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
@@ -183,7 +224,7 @@ jobs:
           cd AnyKernel3
           ZIP_NAME="Kernel-${{ inputs.BUILD_USER }}-${{ inputs.USE_KSU }}-$(date +'%Y%m%d-%H%M').zip"
           zip -r9 "$ZIP_NAME" * -x .git README.md *placeholder
-          
+
           echo "zip_path=$GITHUB_WORKSPACE/AnyKernel3/$ZIP_NAME" >> $GITHUB_OUTPUT
           echo "zip_name=$ZIP_NAME" >> $GITHUB_OUTPUT
 
