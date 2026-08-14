@@ -1,0 +1,197 @@
+Name: 🤖 Build Android Kernel (Stable)
+
+on:
+  workflow_dispatch:
+    inputs:
+      KERNEL_URL:
+        description: 'URL Repository Kernel (HTTPS)'
+        required: true
+        type: string
+      KERNEL_BRANCH:
+        description: 'Branch Kernel'
+        required: true
+        type: string
+      KERNEL_DEFCONFIG:
+        description: 'Nama Defconfig (misal: vendor/sweet_user_defconfig)'
+        required: true
+        type: string
+      LOCALVERSION:
+        description: 'Localversion tambahan (Opsional)'
+        required: false
+        type: string
+      BUILD_USER:
+        required: true
+        default: "xiaomi"
+        type: string
+      BUILD_HOST:
+        required: true
+        default: "redmi"
+        type: string
+      USE_KSU:
+        required: true
+        default: "none"
+        type: choice
+        options: [none, KernelSU, KernelSU-Next]
+      CLANG_SOURCE:
+        required: true
+        default: "proton"
+        type: choice
+        options: [proton]
+      USE_LTO:
+        required: true
+        default: "none"
+        type: choice
+        options: [none, thin, full]
+      ARCH:
+        required: true
+        default: "arm64"
+        type: choice
+        options: [arm64]
+
+env:
+  KERNEL_DIR: kernel_source
+  CLANG_DIR: clang
+  OUT_DIR: out
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Install Dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y \
+            bc bison flex libssl-dev libelf-dev \
+            build-essential python3 curl git zip unzip wget \
+            libncurses-dev rsync \
+            gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu \
+            gcc-arm-linux-gnueabi binutils-arm-linux-gnueabi
+
+      - name: Clone Kernel Source
+        run: |
+          git clone --depth=1 -b "${{ inputs.KERNEL_BRANCH }}" "${{ inputs.KERNEL_URL }}" "$KERNEL_DIR"
+
+      - name: Get Proton Clang
+        run: |
+          git clone --depth=1 https://github.com/kdrag0n/proton-clang "$CLANG_DIR"
+
+      - name: Export Environment Variables
+        run: |
+          echo "$GITHUB_WORKSPACE/$CLANG_DIR/bin" >> $GITHUB_PATH
+          echo "KBUILD_BUILD_USER=${{ inputs.BUILD_USER }}" >> $GITHUB_ENV
+          echo "KBUILD_BUILD_HOST=${{ inputs.BUILD_HOST }}" >> $GITHUB_ENV
+
+      - name: Setup KernelSU
+        if: inputs.USE_KSU != 'none'
+        working-directory: ${{ env.KERNEL_DIR }}
+        run: |
+          if [ "${{ inputs.USE_KSU }}" == "KernelSU" ]; then
+            curl -LSs https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh | bash -
+          else
+            curl -LSs https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh | bash -s next
+          fi
+
+      - name: Execute Defconfig
+        working-directory: ${{ env.KERNEL_DIR }}
+        run: |
+          make O=$OUT_DIR ARCH=arm64 CC=clang LLVM=1 LLVM_IAS=1 LD=ld.lld \
+            ${{ inputs.KERNEL_DEFCONFIG }}
+
+      - name: Build Kernel
+        working-directory: ${{ env.KERNEL_DIR }}
+        run: |
+          set -o pipefail
+
+          export PATH="$GITHUB_WORKSPACE/$CLANG_DIR/bin:$PATH"
+          export ARCH=arm64
+          export SUBARCH=arm64
+          export HOSTCFLAGS="-fcommon"
+          export HOSTCXXFLAGS="-fcommon"
+          export KCFLAGS="-fno-stack-protector"
+
+          MAKE_ARGS="ARCH=arm64 \
+          O=$OUT_DIR \
+          CC=clang \
+          LLVM=1 \
+          LLVM_IAS=1 \
+          LD=ld.lld \
+          CROSS_COMPILE=aarch64-linux-gnu- \
+          CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
+          CONFIG_LOCALVERSION_AUTO=n"
+
+          if [ "${{ inputs.USE_LTO }}" == "thin" ]; then
+            MAKE_ARGS="$MAKE_ARGS LTO_CLANG_THIN=1"
+          elif [ "${{ inputs.USE_LTO }}" == "full" ]; then
+            MAKE_ARGS="$MAKE_ARGS LTO_CLANG_FULL=1"
+          fi
+
+          if [ -n "${{ inputs.LOCALVERSION }}" ]; then
+            MAKE_ARGS="$MAKE_ARGS LOCALVERSION=${{ inputs.LOCALVERSION }}"
+          fi
+
+          make $MAKE_ARGS -j$(nproc --all) 2>&1 | tee build.log
+
+      - name: Debug Output Directory
+        working-directory: ${{ env.KERNEL_DIR }}
+        run: |
+          echo "Isi folder out:"
+          ls -R $OUT_DIR || true
+
+      - name: Find Image & Prepare AnyKernel3 Zip
+        id: img
+        working-directory: ${{ env.KERNEL_DIR }}
+        run: |
+          IMAGE=$(find $PWD/$OUT_DIR/arch/arm64/boot -name "Image.gz-dtb" 2>/dev/null | head -n1)
+
+          if [ -z "$IMAGE" ]; then
+            IMAGE=$(find $PWD/$OUT_DIR/arch/arm64/boot -name "Image.gz" 2>/dev/null | head -n1)
+          fi
+
+          if [ -z "$IMAGE" ]; then
+            IMAGE=$(find $PWD/$OUT_DIR/arch/arm64/boot -name "Image" 2>/dev/null | head -n1)
+          fi
+
+          if [ -z "$IMAGE" ]; then
+            echo "❌ Image kernel tidak ditemukan!"
+            exit 1
+          fi
+
+          echo "image_path=$IMAGE" >> $GITHUB_OUTPUT
+          echo "Ketemu Kernel Image: $IMAGE"
+
+          cd $GITHUB_WORKSPACE
+          git clone --depth=1 https://github.com/osm0sis/AnyKernel3 AnyKernel3
+          cp "$IMAGE" AnyKernel3/
+
+          DTB=$(find $GITHUB_WORKSPACE/$KERNEL_DIR/$OUT_DIR/arch/arm64/boot/dts -name "*.dtb" 2>/dev/null | head -n1)
+          if [ -n "$DTB" ]; then
+            cp "$DTB" AnyKernel3/dtb || true
+          fi
+
+          DTBO=$(find $GITHUB_WORKSPACE/$KERNEL_DIR/$OUT_DIR/arch/arm64/boot -name "dtbo.img" 2>/dev/null | head -n1)
+          if [ -n "$DTBO" ]; then
+            cp "$DTBO" AnyKernel3/dtbo.img || true
+          fi
+
+          cd AnyKernel3
+          ZIP_NAME="Kernel-${{ inputs.BUILD_USER }}-${{ inputs.USE_KSU }}-$(date +'%Y%m%d-%H%M').zip"
+          zip -r9 "$ZIP_NAME" * -x .git README.md *placeholder
+          
+          echo "zip_path=$GITHUB_WORKSPACE/AnyKernel3/$ZIP_NAME" >> $GITHUB_OUTPUT
+          echo "zip_name=$ZIP_NAME" >> $GITHUB_OUTPUT
+
+      - name: Upload Flashable Kernel (.zip)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.img.outputs.zip_name }}
+          path: ${{ steps.img.outputs.zip_path }}
+
+      - name: Upload Raw Image File (Backup)
+        uses: actions/upload-artifact@v4
+        with:
+          name: raw-kernel-image
+          path: ${{ steps.img.outputs.image_path }}
