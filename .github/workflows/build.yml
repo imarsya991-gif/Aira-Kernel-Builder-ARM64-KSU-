@@ -18,6 +18,18 @@ on:
         required: true
         type: string
 
+      BUILD_USER:
+        description: "👤 KBUILD_BUILD_USER (Nama User Kernel)"
+        required: true
+        default: "exxyrou"
+        type: string
+
+      BUILD_HOST:
+        description: "🖥️ KBUILD_BUILD_HOST (Nama Host Kernel)"
+        required: true
+        default: "mkjzt"
+        type: string
+
       ANYKERNEL3_URL:
         description: "📦 AnyKernel3 repo URL"
         required: true
@@ -103,7 +115,9 @@ jobs:
             bc bison flex libssl-dev libelf-dev \
             build-essential python3 python3-pip \
             curl git zip unzip wget ccache \
-            libncurses-dev rsync
+            libncurses-dev rsync \
+            gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu \
+            gcc-arm-linux-gnueabi binutils-arm-linux-gnueabi
 
       - name: 📥 Clone kernel source
         run: |
@@ -178,19 +192,19 @@ jobs:
       - name: 🔧 Export toolchain path & vars
         run: |
           echo "$GITHUB_WORKSPACE/$CLANG_DIR/bin" >> "$GITHUB_PATH"
-          echo "KBUILD_BUILD_USER=builder" >> "$GITHUB_ENV"
-          echo "KBUILD_BUILD_HOST=github-actions" >> "$GITHUB_ENV"
+          echo "KBUILD_BUILD_USER=${{ inputs.BUILD_USER }}" >> "$GITHUB_ENV"
+          echo "KBUILD_BUILD_HOST=${{ inputs.BUILD_HOST }}" >> "$GITHUB_ENV"
 
       - name: ⚙️ Generate defconfig
         working-directory: ${{ env.KERNEL_DIR }}
         run: |
-          make O=$OUT_DIR ARCH=${{ inputs.ARCH }} CC=clang LLVM=1 LLVM_IAS=1 \
+          make O=$OUT_DIR ARCH=${{ inputs.ARCH }} CC=clang LLVM=1 \
             ${{ inputs.KERNEL_DEFCONFIG }}
 
       - name: 🏗️ Build kernel
         working-directory: ${{ env.KERNEL_DIR }}
         run: |
-          MAKE_ARGS="ARCH=${{ inputs.ARCH }} O=$OUT_DIR CC=clang LLVM=1 LLVM_IAS=1 CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi-"
+          MAKE_ARGS="ARCH=${{ inputs.ARCH }} O=$OUT_DIR CC=clang LLVM=1 CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi-"
 
           if [ "${{ inputs.USE_LTO }}" == "thin" ]; then
             MAKE_ARGS="$MAKE_ARGS LTO_CLANG_THIN=1"
@@ -260,5 +274,7 @@ jobs:
             **Clang**: `${{ inputs.CLANG_SOURCE }}`
             **KSU**: `${{ inputs.USE_KSU }}`
             **LTO**: `${{ inputs.USE_LTO }}`
+            **User**: `${{ inputs.BUILD_USER }}`
+            **Host**: `${{ inputs.BUILD_HOST }}`
           files: ${{ env.ZIP_NAME }}
           
