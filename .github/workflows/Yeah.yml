@@ -1,4 +1,4 @@
-name: 🤖 Build Android Kernel 4.4
+name: 🤖 Build Android Kernel 4.4 (AOSP Clang)
 
 on:
   workflow_dispatch:
@@ -12,7 +12,7 @@ on:
         required: true
         type: string
       KERNEL_DEFCONFIG:
-        description: 'Nama Defconfig (misal: vendor/sweet_user_defconfig)'
+        description: 'Nama Defconfig (misal: lavender-perf_defconfig)'
         required: true
         type: string
       LOCALVERSION:
@@ -32,11 +32,6 @@ on:
         default: "none"
         type: choice
         options: [none, KernelSU, KernelSU-Next]
-      CLANG_SOURCE:
-        required: true
-        default: "proton"
-        type: choice
-        options: [proton]
       USE_LTO:
         required: true
         default: "none"
@@ -75,9 +70,12 @@ jobs:
         run: |
           git clone --depth=1 -b "${{ inputs.KERNEL_BRANCH }}" "${{ inputs.KERNEL_URL }}" "$KERNEL_DIR"
 
-      - name: Get Proton Clang
+      - name: Download & Extract AOSP Clang 11 (r383902)
         run: |
-          git clone --depth=1 https://github.com/kdrag0n/proton-clang "$CLANG_DIR"
+          mkdir -p "$CLANG_DIR"
+          wget -q https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/android11-release/clang-r383902.tar.gz
+          tar -xf clang-r383902.tar.gz -C "$CLANG_DIR"
+          rm clang-r383902.tar.gz
 
       - name: Setup KernelSU
         if: inputs.USE_KSU != 'none'
@@ -92,7 +90,7 @@ jobs:
       - name: Fix Legacy Kernel DTC & YYLLOC Issues
         working-directory: ${{ env.KERNEL_DIR }}
         run: |
-          # Fix yylloc multiple definition pada GCC baru
+          # Fix yylloc multiple definition pada GCC 10+
           sed -i 's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/' scripts/dtc/dtc-parser.tab.c || true
           sed -i 's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/' scripts/dtc/dtc-lexer.lex.c_shipped || true
 
@@ -139,13 +137,7 @@ jobs:
 
           make $MAKE_ARGS -j$(nproc --all) 2>&1 | tee build.log
 
-      - name: Debug Output Directory
-        working-directory: ${{ env.KERNEL_DIR }}
-        run: |
-          echo "Isi folder out:"
-          ls -R $OUT_DIR || true
-
-      - name: Upload Build Log (Selalu Diunggah)
+      - name: Upload Build Log
         if: always()
         uses: actions/upload-artifact@v4
         with:
