@@ -179,16 +179,7 @@ jobs:
           tar -xf custom_clang.tar || unzip custom_clang.tar
           rm -f custom_clang.tar
 
-      - name: 🩹 Setup KernelSU
-        if: inputs.USE_KSU != 'none'
-        working-directory: ${{ env.KERNEL_DIR }}
-        run: |
-          if [ "${{ inputs.USE_KSU }}" == "KernelSU" ]; then
-            curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -
-          elif [ "${{ inputs.USE_KSU }}" == "KernelSU-Next" ]; then
-            curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s next
-          fi
-
+    
       - name: 🔧 Export toolchain path & vars
         run: |
           echo "$GITHUB_WORKSPACE/$CLANG_DIR/bin" >> "$GITHUB_PATH"
