@@ -90,7 +90,7 @@ jobs:
           tar -xf clang-r383902.tar.gz -C "$CLANG_DIR"
           rm clang-r383902.tar.gz
 
-      - name: Setup KernelSU / ReSukiSU (Ghnkz-hub)
+      - name: Setup KernelSU / ReSukiSU
         if: inputs.USE_KSU != 'none'
         working-directory: ${{ env.KERNEL_DIR }}
         run: |
@@ -99,8 +99,7 @@ jobs:
           elif [ "${{ inputs.USE_KSU }}" == "KernelSU-Next" ]; then
             curl -LSs https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh | bash -s next
           elif [ "${{ inputs.USE_KSU }}" == "ReSukiSU" ]; then
-            # Menggunakan branch syscall dari repository Ghnkz-hub
-            curl -LSs https://raw.githubusercontent.com/Ghnkz-hub/KernelSU-Next/syscall/kernel/setup.sh | bash -s syscall
+            curl -LSs https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh | bash -s main
           fi
 
       - name: Fix Legacy Kernel DTC & YYLLOC Issues
