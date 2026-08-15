@@ -155,7 +155,8 @@ jobs:
           export SUBARCH=arm64
           export HOSTCFLAGS="-fcommon"
           export HOSTCXXFLAGS="-fcommon"
-          export KCFLAGS="-O3 -fomit-frame-pointer -fno-stack-protector -Wno-error"
+          # Ditambahkan flag tambahan -Wno-error untuk mencegah error kompilasi pada kernel lama
+          export KCFLAGS="-O3 -fomit-frame-pointer -fno-stack-protector -Wno-error -Wno-parentheses -Wno-unused-value -Wno-sometimes-uninitialized"
           export KBUILD_BUILD_USER="${{ inputs.BUILD_USER }}"
           export KBUILD_BUILD_HOST="${{ inputs.BUILD_HOST }}"
           export CC="ccache clang"
