@@ -34,7 +34,7 @@ on:
         options: [none, KernelSU, KernelSU-Next, ReSukiSU]
       USE_LTO:
         required: true
-        default: "full"
+        default: "none"
         type: choice
         options: [none, thin, full]
       ARCH:
@@ -122,16 +122,14 @@ jobs:
             CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
             ${{ inputs.KERNEL_DEFCONFIG }}
 
-      - name: Tweak Config untuk Performa Maksimal
+      - name: Tweak Config
         working-directory: ${{ env.KERNEL_DIR }}
         run: |
           export PATH="$GITHUB_WORKSPACE/$CLANG_DIR/bin:$PATH"
           CFG="$OUT_DIR/.config"
           SCRIPT="scripts/config"
 
-          $SCRIPT --file "$CFG" -e CC_OPTIMIZE_FOR_PERFORMANCE_O3 || true
-          $SCRIPT --file "$CFG" -d CC_OPTIMIZE_FOR_SIZE || true
-
+          # Matikan debug/tracing yang memperlambat performa
           $SCRIPT --file "$CFG" -d DEBUG_KERNEL || true
           $SCRIPT --file "$CFG" -d DEBUG_INFO || true
           $SCRIPT --file "$CFG" -d DEBUG_FS || true
@@ -141,6 +139,7 @@ jobs:
           $SCRIPT --file "$CFG" -d FUNCTION_TRACER || true
           $SCRIPT --file "$CFG" -d SCHEDSTATS || true
 
+          # Aktifkan HMP scheduler
           $SCRIPT --file "$CFG" -e SCHED_HMP || true
           $SCRIPT --file "$CFG" -e SCHED_HMP_CSTATE_AWARE || true
 
@@ -157,8 +156,8 @@ jobs:
           export HOSTCFLAGS="-fcommon"
           export HOSTCXXFLAGS="-fcommon"
           
-          # Flag KCFLAGS diperbarui untuk mengabaikan peringatan variabel ganda dan batas array pada kernel 4.4
-          export KCFLAGS="-O3 -fcommon -fomit-frame-pointer -fno-stack-protector -Wno-error -Wno-parentheses -Wno-unused-value -Wno-error=nonnull -Wno-error=address-of-packed-member -Wno-error=section -Wno-error=array-bounds"
+          # KCFLAGS dikembalikan ke -O2 dan ditambahkan penanganan kompatibilitas Clang
+          export KCFLAGS="-O2 -fcommon -fno-strict-aliasing -fno-stack-protector -Wno-error -Wno-initializer-overrides -Wno-unused-value -Wno-format -Wno-sign-compare"
           
           export KBUILD_BUILD_USER="${{ inputs.BUILD_USER }}"
           export KBUILD_BUILD_HOST="${{ inputs.BUILD_HOST }}"
