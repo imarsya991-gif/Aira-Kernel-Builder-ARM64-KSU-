@@ -1,4 +1,4 @@
-name: 🤖 Build Android Kernel 4.4 (AOSP Clang + ReSukiSU)
+name: 🤖 Build Android Kernel 4.4 (AOSP Clang + ReSukiSU Manual Hook)
 
 on:
   workflow_dispatch:
@@ -23,12 +23,6 @@ on:
         required: false
         type: string
 
-      DEFAULT_HOSTNAME:
-        description: 'Default hostname kernel'
-        required: false
-        default: 'redmi'
-        type: string
-
       BUILD_USER:
         required: true
         default: "xiaomi"
@@ -39,9 +33,14 @@ on:
         default: "redmi"
         type: string
 
+      DEFAULT_HOSTNAME:
+        required: true
+        default: "redmi"
+        type: string
+
       USE_LTO:
         required: true
-        default: "full"
+        default: "none"
         type: choice
         options:
           - none
@@ -67,12 +66,21 @@ jobs:
 
     steps:
 
+      # ============================================================
+      # Checkout Builder
+      # ============================================================
+
       - name: Checkout Repository
         uses: actions/checkout@v4
+
+      # ============================================================
+      # Install Dependencies
+      # ============================================================
 
       - name: Install Dependencies
         run: |
           sudo apt update
+
           sudo apt install -y \
             bc \
             bison \
@@ -94,10 +102,14 @@ jobs:
             gcc-arm-linux-gnueabi \
             binutils-arm-linux-gnueabi
 
+      # ============================================================
+      # Setup ccache
+      # ============================================================
+
       - name: Setup ccache
         run: |
           ccache --max-size=2G
-          echo "CCACHE_DIR=$HOME/.ccache" >> $GITHUB_ENV
+          echo "CCACHE_DIR=$HOME/.ccache" >> "$GITHUB_ENV"
 
       - name: Cache ccache
         uses: actions/cache@v4
@@ -107,6 +119,10 @@ jobs:
           restore-keys: |
             ccache-${{ inputs.KERNEL_DEFCONFIG }}-
 
+      # ============================================================
+      # Clone Kernel Source
+      # ============================================================
+
       - name: Clone Kernel Source
         run: |
           git clone \
@@ -115,82 +131,102 @@ jobs:
             "${{ inputs.KERNEL_URL }}" \
             "$KERNEL_DIR"
 
-          echo "===== Kernel Source ====="
+          echo "========================================"
+          echo "          KERNEL SOURCE"
+          echo "========================================"
+
           git -C "$KERNEL_DIR" log -1 --oneline
-          echo "========================"
+
+          echo "========================================"
+
+      # ============================================================
+      # Clone ReSukiSU Source
+      #
+      # NOTE:
+      # Manual hook SUDAH ada di kernel source.
+      # Tidak menjalankan kernel/setup.sh.
+      # ============================================================
 
       - name: Clone ReSukiSU Source
         run: |
           git clone \
+            --depth=1 \
             https://github.com/ReSukiSU/ReSukiSU.git \
             "$RESUKISU_DIR"
 
-          cd "$RESUKISU_DIR"
+          echo "========================================"
+          echo "        RESUKISU SOURCE"
+          echo "========================================"
 
-          git fetch origin \
-            pull/$(echo "31652938915" | grep -o '[0-9]*' | head -n 1)/head \
-            || true
+          git -C "$RESUKISU_DIR" log -1 --oneline
+          git -C "$RESUKISU_DIR" describe --tags --always || true
 
-          echo "===== ReSukiSU Source ====="
-          git log -1 --oneline
-          echo "=========================="
+          echo "========================================"
 
-      - name: Setup ReSukiSU Kernel Integration
-        working-directory: ${{ env.KERNEL_DIR }}
-        run: |
-          curl -LSs \
-            "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" \
-            | bash
+      # ============================================================
+      # Verify Manual Hook
+      # ============================================================
 
-      - name: Download & Extract AOSP Clang 11 (r383902)
-        run: |
-          mkdir -p "$CLANG_DIR"
-
-          wget -q \
-            https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/android11-release/clang-r383902.tar.gz
-
-          tar -xf \
-            clang-r383902.tar.gz \
-            -C "$CLANG_DIR"
-
-          rm -f clang-r383902.tar.gz
-
-      - name: Check ReSukiSU Manual Integration
+      - name: Verify Manual Hook Integration
         working-directory: ${{ env.KERNEL_DIR }}
         run: |
           echo "========================================"
-          echo "   CHECK RESUKISU MANUAL INTEGRATION"
+          echo "     MANUAL HOOK INTEGRATION CHECK"
           echo "========================================"
 
           echo ""
-          echo "[1] KernelSU / ReSukiSU files:"
+          echo "[1] Checking expected hook locations..."
 
-          find kernel fs drivers security \
-            -type f \
-            \( \
-              -name "*ksu*" -o \
-              -name "*suki*" \
-            \) \
+          for FILE in \
+            fs/open.c \
+            fs/exec.c \
+            fs/stat.c \
+            fs/read_write.c \
+            kernel/reboot.c \
+            drivers/input/input.c
+          do
+            if [ -f "$FILE" ]; then
+              echo "✓ $FILE"
+            else
+              echo "✗ $FILE tidak ditemukan"
+            fi
+          done
+
+          echo ""
+          echo "[2] Checking CONFIG_KSU_MANUAL_HOOK references..."
+
+          grep -R \
+            "CONFIG_KSU_MANUAL_HOOK" \
+            fs \
+            kernel \
+            drivers \
+            security \
             2>/dev/null \
             | head -100 || true
 
           echo ""
-          echo "[2] Manual hook references:"
+          echo "[3] Checking manual hook references..."
 
           grep -R \
             "KSU_MANUAL_HOOK" \
-            . \
-            --exclude-dir=.git \
-            --exclude-dir="$OUT_DIR" \
+            fs \
+            kernel \
+            drivers \
+            security \
             2>/dev/null \
             | head -100 || true
 
           echo ""
           echo "========================================"
+
+      # ============================================================
+      # Fix Legacy DTC / YYLLOC
+      # ============================================================
 
       - name: Fix Legacy Kernel DTC & YYLLOC Issues
         working-directory: ${{ env.KERNEL_DIR }}
         run: |
+
           if [ -f scripts/dtc/dtc-parser.tab.c ]; then
             sed -i \
               's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/' \
@@ -203,9 +239,39 @@ jobs:
               scripts/dtc/dtc-lexer.lex.c_shipped
           fi
 
+      # ============================================================
+      # Download AOSP Clang 11
+      # ============================================================
+
+      - name: Download & Extract AOSP Clang 11
+        run: |
+          mkdir -p "$CLANG_DIR"
+
+          wget -q \
+            https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/android11-release/clang-r383902.tar.gz
+
+          tar -xf \
+            clang-r383902.tar.gz \
+            -C "$CLANG_DIR"
+
+          rm -f clang-r383902.tar.gz
+
+          echo "========================================"
+          echo "          CLANG VERSION"
+          echo "========================================"
+
+          "$GITHUB_WORKSPACE/$CLANG_DIR/bin/clang" --version
+
+          echo "========================================"
+
+      # ============================================================
+      # Execute Defconfig
+      # ============================================================
+
       - name: Execute Defconfig
         working-directory: ${{ env.KERNEL_DIR }}
         run: |
+
           export PATH="$GITHUB_WORKSPACE/$CLANG_DIR/bin:$PATH"
 
           make \
@@ -216,13 +282,26 @@ jobs:
             CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
             ${{ inputs.KERNEL_DEFCONFIG }}
 
-      - name: Tweak Config untuk Performa Maksimal
+      # ============================================================
+      # Kernel Configuration
+      # ============================================================
+
+      - name: Configure Kernel
         working-directory: ${{ env.KERNEL_DIR }}
         run: |
+
           export PATH="$GITHUB_WORKSPACE/$CLANG_DIR/bin:$PATH"
 
           CFG="$OUT_DIR/.config"
           SCRIPT="scripts/config"
+
+          echo "========================================"
+          echo "       KERNEL CONFIGURATION"
+          echo "========================================"
+
+          # --------------------------------------------------------
+          # Compiler optimization
+          # --------------------------------------------------------
 
           $SCRIPT \
             --file "$CFG" \
@@ -231,6 +310,10 @@ jobs:
           $SCRIPT \
             --file "$CFG" \
             -d CC_OPTIMIZE_FOR_SIZE || true
+
+          # --------------------------------------------------------
+          # Disable unnecessary debugging
+          # --------------------------------------------------------
 
           $SCRIPT --file "$CFG" -d DEBUG_KERNEL || true
           $SCRIPT --file "$CFG" -d DEBUG_INFO || true
@@ -241,6 +324,10 @@ jobs:
           $SCRIPT --file "$CFG" -d FUNCTION_TRACER || true
           $SCRIPT --file "$CFG" -d SCHEDSTATS || true
 
+          # --------------------------------------------------------
+          # HMP Scheduler
+          # --------------------------------------------------------
+
           $SCRIPT \
             --file "$CFG" \
             -e SCHED_HMP || true
@@ -249,87 +336,67 @@ jobs:
             --file "$CFG" \
             -e SCHED_HMP_CSTATE_AWARE || true
 
-          make \
-            O=$OUT_DIR \
-            ARCH=arm64 \
-            CC=clang \
-            olddefconfig
-
-      - name: Set Kernel Version & Hostname
-        working-directory: ${{ env.KERNEL_DIR }}
-        run: |
-          CFG="$OUT_DIR/.config"
-
-          echo "========================================"
-          echo "   SET KERNEL VERSION & HOSTNAME"
-          echo "========================================"
-
-          # ============================================================
-          # CONFIG_LOCALVERSION
-          # ============================================================
+          # --------------------------------------------------------
+          # Local version
+          # --------------------------------------------------------
 
           if [ -n "${{ inputs.LOCALVERSION }}" ]; then
-            echo "[LOCALVERSION] Setting: ${{ inputs.LOCALVERSION }}"
 
             sed -i \
-              's/^CONFIG_LOCALVERSION=".*"/CONFIG_LOCALVERSION="${{ inputs.LOCALVERSION }}"/' \
+              's/^CONFIG_LOCALVERSION=".*"/CONFIG_LOCALVERSION="'"${{ inputs.LOCALVERSION }}"'"/' \
               "$CFG"
 
             if ! grep -q "^CONFIG_LOCALVERSION=" "$CFG"; then
               echo 'CONFIG_LOCALVERSION="${{ inputs.LOCALVERSION }}"' >> "$CFG"
             fi
-          else
-            echo "[LOCALVERSION] Tidak diubah"
+
           fi
 
-          # ============================================================
-          # CONFIG_DEFAULT_HOSTNAME
-          # ============================================================
-
-          echo "[HOSTNAME] Setting: ${{ inputs.DEFAULT_HOSTNAME }}"
+          # --------------------------------------------------------
+          # Default hostname
+          # --------------------------------------------------------
 
           sed -i \
-            's/^CONFIG_DEFAULT_HOSTNAME=".*"/CONFIG_DEFAULT_HOSTNAME="${{ inputs.DEFAULT_HOSTNAME }}"/' \
+            's/^CONFIG_DEFAULT_HOSTNAME=".*"/CONFIG_DEFAULT_HOSTNAME="'"${{ inputs.DEFAULT_HOSTNAME }}"'"/' \
             "$CFG"
 
           if ! grep -q "^CONFIG_DEFAULT_HOSTNAME=" "$CFG"; then
             echo 'CONFIG_DEFAULT_HOSTNAME="${{ inputs.DEFAULT_HOSTNAME }}"' >> "$CFG"
           fi
 
+          # --------------------------------------------------------
+          # Regenerate configuration
+          # --------------------------------------------------------
+
+          make \
+            O=$OUT_DIR \
+            ARCH=arm64 \
+            CC=clang \
+            olddefconfig
+
           echo ""
-          echo "===== RESULT ====="
-
-          grep -E \
-            '^(CONFIG_LOCALVERSION=|CONFIG_DEFAULT_HOSTNAME=)' \
-            "$CFG" || true
-
-          echo "=================="
-
-      - name: Show Kernel Configuration
-        working-directory: ${{ env.KERNEL_DIR }}
-        run: |
-          CFG="$OUT_DIR/.config"
-
           echo "========================================"
-          echo "       KERNEL CONFIGURATION"
+          echo "          FINAL CONFIG"
           echo "========================================"
 
           grep -E \
-            '^(CONFIG_KSU|CONFIG_KSU_MANUAL_HOOK)' \
+            '^(CONFIG_KSU|CONFIG_LOCALVERSION|CONFIG_DEFAULT_HOSTNAME)' \
             "$CFG" || true
 
           echo ""
-          echo "===== VERSION / HOSTNAME ====="
-
-          grep -E \
-            '^(CONFIG_LOCALVERSION=|CONFIG_DEFAULT_HOSTNAME=)' \
-            "$CFG" || true
+          echo "CONFIG_KSU_MANUAL_HOOK TIDAK DIPAKSA"
+          echo "karena manual hook sudah berada di source."
 
           echo "========================================"
+
+      # ============================================================
+      # Build Kernel
+      # ============================================================
 
       - name: Build Kernel
         working-directory: ${{ env.KERNEL_DIR }}
         run: |
+
           set -o pipefail
 
           export PATH="/usr/lib/ccache:$GITHUB_WORKSPACE/$CLANG_DIR/bin:$PATH"
@@ -374,6 +441,10 @@ jobs:
             -j$(nproc --all) \
             2>&1 | tee build.log
 
+      # ============================================================
+      # Upload Build Log
+      # ============================================================
+
       - name: Upload Build Log
         if: always()
         uses: actions/upload-artifact@v4
@@ -381,10 +452,15 @@ jobs:
           name: build-log
           path: ${{ env.KERNEL_DIR }}/build.log
 
+      # ============================================================
+      # Find Kernel Image
+      # ============================================================
+
       - name: Find Image & Prepare AnyKernel3 Zip
         id: img
         working-directory: ${{ env.KERNEL_DIR }}
         run: |
+
           IMAGE=$(find \
             "$PWD/$OUT_DIR/arch/arm64/boot" \
             -name "Image.gz-dtb" \
@@ -421,12 +497,20 @@ jobs:
 
           cd "$GITHUB_WORKSPACE"
 
+          # --------------------------------------------------------
+          # AnyKernel3
+          # --------------------------------------------------------
+
           git clone \
             --depth=1 \
             https://github.com/osm0sis/AnyKernel3 \
             AnyKernel3
 
           cp "$IMAGE" AnyKernel3/
+
+          # --------------------------------------------------------
+          # DTB
+          # --------------------------------------------------------
 
           DTB=$(find \
             "$GITHUB_WORKSPACE/$KERNEL_DIR/$OUT_DIR/arch/arm64/boot/dts" \
@@ -441,6 +525,10 @@ jobs:
             echo "DTB tidak ditemukan."
           fi
 
+          # --------------------------------------------------------
+          # DTBO
+          # --------------------------------------------------------
+
           DTBO=$(find \
             "$GITHUB_WORKSPACE/$KERNEL_DIR/$OUT_DIR/arch/arm64/boot" \
             -name "dtbo.img" \
@@ -454,9 +542,13 @@ jobs:
             echo "DTBO tidak ditemukan."
           fi
 
+          # --------------------------------------------------------
+          # Create ZIP
+          # --------------------------------------------------------
+
           cd AnyKernel3
 
-          ZIP_NAME="Kernel-${{ inputs.BUILD_USER }}-ReSukiSU-$(date +'%Y%m%d-%H%M').zip"
+          ZIP_NAME="Kernel-${{ inputs.BUILD_USER }}-ReSukiSU-ManualHook-$(date +'%Y%m%d-%H%M').zip"
 
           zip \
             -r9 \
@@ -474,15 +566,24 @@ jobs:
 
           echo ""
           echo "========================================"
-          echo "Flashable ZIP:"
+          echo "          FLASHABLE ZIP"
+          echo "========================================"
           echo "$ZIP_NAME"
           echo "========================================"
+
+      # ============================================================
+      # Upload Flashable ZIP
+      # ============================================================
 
       - name: Upload Flashable Kernel (.zip)
         uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.img.outputs.zip_name }}
           path: ${{ steps.img.outputs.zip_path }}
+
+      # ============================================================
+      # Upload Raw Image
+      # ============================================================
 
       - name: Upload Raw Image File (Backup)
         uses: actions/upload-artifact@v4
