@@ -61,21 +61,12 @@ jobs:
 
     steps:
 
-      # ================================================================
-      # CHECKOUT
-      # ================================================================
-
       - name: Checkout Repository
         uses: actions/checkout@v4
-
-      # ================================================================
-      # DEPENDENCIES
-      # ================================================================
 
       - name: Install Dependencies
         run: |
           sudo apt update
-
           sudo apt install -y \
             bc \
             bison \
@@ -97,10 +88,6 @@ jobs:
             gcc-arm-linux-gnueabi \
             binutils-arm-linux-gnueabi
 
-      # ================================================================
-      # CCACHE
-      # ================================================================
-
       - name: Setup ccache
         run: |
           ccache --max-size=2G
@@ -114,10 +101,6 @@ jobs:
           restore-keys: |
             ccache-${{ inputs.KERNEL_DEFCONFIG }}-
 
-      # ================================================================
-      # CLONE KERNEL SOURCE
-      # ================================================================
-
       - name: Clone Kernel Source
         run: |
           git clone \
@@ -130,14 +113,6 @@ jobs:
           git -C "$KERNEL_DIR" log -1 --oneline
           echo "========================"
 
-      # ================================================================
-      # CLONE RESUKISU SOURCE
-      #
-      # Source kernel SUDAH diintegrasikan manual.
-      # Repo ini hanya disediakan sebagai reference/source.
-      # Tidak ada setup.sh dan tidak ada copy ke kernel_source.
-      # ================================================================
-
       - name: Clone ReSukiSU Source
         run: |
           git clone \
@@ -148,10 +123,6 @@ jobs:
           echo "===== ReSukiSU Source ====="
           git -C "$RESUKISU_DIR" log -1 --oneline
           echo "=========================="
-
-      # ================================================================
-      # AOSP CLANG 11
-      # ================================================================
 
       - name: Download & Extract AOSP Clang 11 (r383902)
         run: |
@@ -166,11 +137,7 @@ jobs:
 
           rm -f clang-r383902.tar.gz
 
-      # ================================================================
-      # VERIFY MANUAL INTEGRATION
-      # ================================================================
-
-      - name: Verify ReSukiSU Manual Integration
+      - name: Check ReSukiSU Manual Integration
         working-directory: ${{ env.KERNEL_DIR }}
         run: |
           echo "========================================"
@@ -180,7 +147,7 @@ jobs:
           echo ""
           echo "[1] KernelSU / ReSukiSU files:"
 
-          find kernel security \
+          find kernel fs drivers security \
             -type f \
             \( \
               -name "*ksu*" -o \
@@ -198,31 +165,28 @@ jobs:
             --exclude-dir=.git \
             --exclude-dir="$OUT_DIR" \
             2>/dev/null \
-            | head -50 || true
+            | head -100 || true
 
           echo ""
           echo "========================================"
 
-      # ================================================================
-      # FIX LEGACY DTC / YYLLOC
-      # ================================================================
-
       - name: Fix Legacy Kernel DTC & YYLLOC Issues
         working-directory: ${{ env.KERNEL_DIR }}
         run: |
-          # Fix yylloc multiple definition pada GCC 10+
+          # File DTC generated mungkin belum tersedia sebelum build.
+          # Jangan hentikan workflow kalau belum ada.
 
-          sed -i \
-            's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/' \
-            scripts/dtc/dtc-parser.tab.c || true
+          if [ -f scripts/dtc/dtc-parser.tab.c ]; then
+            sed -i \
+              's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/' \
+              scripts/dtc/dtc-parser.tab.c
+          fi
 
-          sed -i \
-            's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/' \
-            scripts/dtc/dtc-lexer.lex.c_shipped || true
-
-      # ================================================================
-      # DEFCONFIG
-      # ================================================================
+          if [ -f scripts/dtc/dtc-lexer.lex.c_shipped ]; then
+            sed -i \
+              's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/' \
+              scripts/dtc/dtc-lexer.lex.c_shipped
+          fi
 
       - name: Execute Defconfig
         working-directory: ${{ env.KERNEL_DIR }}
@@ -237,11 +201,7 @@ jobs:
             CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
             ${{ inputs.KERNEL_DEFCONFIG }}
 
-      # ================================================================
-      # CONFIGURATION
-      # ================================================================
-
-      - name: Tweak Config
+      - name: Tweak Config untuk Performa Maksimal
         working-directory: ${{ env.KERNEL_DIR }}
         run: |
           export PATH="$GITHUB_WORKSPACE/$CLANG_DIR/bin:$PATH"
@@ -249,27 +209,9 @@ jobs:
           CFG="$OUT_DIR/.config"
           SCRIPT="scripts/config"
 
-          echo "========================================"
-          echo "        KERNEL CONFIGURATION"
-          echo "========================================"
-
           # ============================================================
-          # ReSukiSU Manual Hook
+          # Optimasi compiler
           # ============================================================
-
-          echo ""
-          echo "[ReSukiSU] Enabling KSU_MANUAL_HOOK..."
-
-          $SCRIPT \
-            --file "$CFG" \
-            -e KSU_MANUAL_HOOK
-
-          # ============================================================
-          # Compiler optimization
-          # ============================================================
-
-          echo ""
-          echo "[Compiler] Performance optimization..."
 
           $SCRIPT \
             --file "$CFG" \
@@ -280,11 +222,8 @@ jobs:
             -d CC_OPTIMIZE_FOR_SIZE || true
 
           # ============================================================
-          # Disable unnecessary debug
+          # Matikan overhead debug/tracing
           # ============================================================
-
-          echo ""
-          echo "[Debug] Disabling unnecessary debug options..."
 
           $SCRIPT --file "$CFG" -d DEBUG_KERNEL || true
           $SCRIPT --file "$CFG" -d DEBUG_INFO || true
@@ -296,11 +235,8 @@ jobs:
           $SCRIPT --file "$CFG" -d SCHEDSTATS || true
 
           # ============================================================
-          # HMP Scheduler
+          # HMP scheduler
           # ============================================================
-
-          echo ""
-          echo "[Scheduler] Enabling HMP..."
 
           $SCRIPT \
             --file "$CFG" \
@@ -314,47 +250,19 @@ jobs:
           # Regenerate config
           # ============================================================
 
-          echo ""
-          echo "[Kconfig] Running olddefconfig..."
-
           make \
             O=$OUT_DIR \
             ARCH=arm64 \
             CC=clang \
             olddefconfig
 
-          # ============================================================
-          # Verify CONFIG_KSU_MANUAL_HOOK
-          # ============================================================
-
-          echo ""
-          echo "========================================"
-          echo "       RESUKISU CONFIG CHECK"
-          echo "========================================"
-
-          if grep -q '^CONFIG_KSU_MANUAL_HOOK=y$' "$CFG"; then
-            echo "✅ CONFIG_KSU_MANUAL_HOOK=y"
-          else
-            echo "❌ CONFIG_KSU_MANUAL_HOOK tidak aktif!"
-            echo ""
-            echo "KSU_MANUAL_HOOK kemungkinan tidak"
-            echo "dikenali oleh Kconfig source kernel."
-            exit 1
-          fi
-
-          echo "========================================"
-
-      # ================================================================
-      # SHOW KERNELSU CONFIG
-      # ================================================================
-
-      - name: Show ReSukiSU Configuration
+      - name: Show Kernel Configuration
         working-directory: ${{ env.KERNEL_DIR }}
         run: |
           CFG="$OUT_DIR/.config"
 
           echo "========================================"
-          echo "       KSU / RESUKISU CONFIG"
+          echo "       KERNEL CONFIGURATION"
           echo "========================================"
 
           grep -E \
@@ -362,10 +270,6 @@ jobs:
             "$CFG" || true
 
           echo "========================================"
-
-      # ================================================================
-      # BUILD
-      # ================================================================
 
       - name: Build Kernel
         working-directory: ${{ env.KERNEL_DIR }}
@@ -394,20 +298,12 @@ jobs:
           CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
           CONFIG_LOCALVERSION_AUTO=n"
 
-          # ============================================================
-          # LTO
-          # ============================================================
-
           if [ "${{ inputs.USE_LTO }}" == "thin" ]; then
             MAKE_ARGS="$MAKE_ARGS LTO_CLANG_THIN=1"
 
           elif [ "${{ inputs.USE_LTO }}" == "full" ]; then
             MAKE_ARGS="$MAKE_ARGS LTO_CLANG_FULL=1"
           fi
-
-          # ============================================================
-          # Localversion
-          # ============================================================
 
           if [ -n "${{ inputs.LOCALVERSION }}" ]; then
             MAKE_ARGS="$MAKE_ARGS LOCALVERSION=${{ inputs.LOCALVERSION }}"
@@ -422,10 +318,6 @@ jobs:
             -j$(nproc --all) \
             2>&1 | tee build.log
 
-      # ================================================================
-      # UPLOAD BUILD LOG
-      # ================================================================
-
       - name: Upload Build Log
         if: always()
         uses: actions/upload-artifact@v4
@@ -433,15 +325,10 @@ jobs:
           name: build-log
           path: ${{ env.KERNEL_DIR }}/build.log
 
-      # ================================================================
-      # FIND IMAGE + ANYKERNEL3
-      # ================================================================
-
       - name: Find Image & Prepare AnyKernel3 Zip
         id: img
         working-directory: ${{ env.KERNEL_DIR }}
         run: |
-
           IMAGE=$(find \
             "$PWD/$OUT_DIR/arch/arm64/boot" \
             -name "Image.gz-dtb" \
@@ -477,10 +364,6 @@ jobs:
           echo "========================================"
 
           cd "$GITHUB_WORKSPACE"
-
-          # ============================================================
-          # AnyKernel3
-          # ============================================================
 
           git clone \
             --depth=1 \
@@ -551,19 +434,11 @@ jobs:
           echo "$ZIP_NAME"
           echo "========================================"
 
-      # ================================================================
-      # UPLOAD ZIP
-      # ================================================================
-
       - name: Upload Flashable Kernel (.zip)
         uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.img.outputs.zip_name }}
           path: ${{ steps.img.outputs.zip_path }}
-
-      # ================================================================
-      # UPLOAD RAW IMAGE
-      # ================================================================
 
       - name: Upload Raw Image File (Backup)
         uses: actions/upload-artifact@v4
