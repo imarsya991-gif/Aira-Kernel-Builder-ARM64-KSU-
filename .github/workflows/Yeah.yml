@@ -260,10 +260,6 @@ jobs:
             MAKE_ARGS="$MAKE_ARGS LTO_CLANG_FULL=1"
           fi
 
-          if [ -n "${{ inputs.LOCALVERSION }}" ]; then
-            MAKE_ARGS="$MAKE_ARGS LOCALVERSION=${{ inputs.LOCALVERSION }}"
-          fi
-
           echo "========================================"
           echo "          BUILDING KERNEL"
           echo "========================================"
