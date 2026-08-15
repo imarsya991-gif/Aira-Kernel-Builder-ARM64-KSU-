@@ -117,6 +117,7 @@ jobs:
         run: |
           export PATH="$GITHUB_WORKSPACE/$CLANG_DIR/bin:$PATH"
           make O=$OUT_DIR ARCH=arm64 CC=clang \
+            CLANG_TRIPLE=aarch64-linux-gnu- \
             CROSS_COMPILE=aarch64-linux-gnu- \
             CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
             ${{ inputs.KERNEL_DEFCONFIG }}
@@ -150,19 +151,22 @@ jobs:
         run: |
           set -o pipefail
 
-          export PATH="/usr/lib/ccache:$GITHUB_WORKSPACE/$CLANG_DIR/bin:$PATH"
+          export PATH="$GITHUB_WORKSPACE/$CLANG_DIR/bin:$PATH"
           export ARCH=arm64
           export SUBARCH=arm64
           export HOSTCFLAGS="-fcommon"
           export HOSTCXXFLAGS="-fcommon"
-          # KCFLAGS dibersihkan dari opsi yang tidak dikenal oleh compiler
-          export KCFLAGS="-O3 -fomit-frame-pointer -fno-stack-protector -Wno-error -Wno-parentheses -Wno-unused-value -Wno-error=nonnull -Wno-error=address-of-packed-member"
+          
+          # Flag KCFLAGS diperbarui untuk mengabaikan peringatan variabel ganda dan batas array pada kernel 4.4
+          export KCFLAGS="-O3 -fcommon -fomit-frame-pointer -fno-stack-protector -Wno-error -Wno-parentheses -Wno-unused-value -Wno-error=nonnull -Wno-error=address-of-packed-member -Wno-error=section -Wno-error=array-bounds"
+          
           export KBUILD_BUILD_USER="${{ inputs.BUILD_USER }}"
           export KBUILD_BUILD_HOST="${{ inputs.BUILD_HOST }}"
           export CC="ccache clang"
 
           MAKE_ARGS="ARCH=arm64 \
           O=$OUT_DIR \
+          CC=clang \
           CLANG_TRIPLE=aarch64-linux-gnu- \
           CROSS_COMPILE=aarch64-linux-gnu- \
           CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
