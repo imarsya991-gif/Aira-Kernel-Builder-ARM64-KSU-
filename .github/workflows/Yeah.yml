@@ -142,9 +142,10 @@ jobs:
       # ============================================================
       # Clone ReSukiSU Source
       #
-      # NOTE:
-      # Manual hook SUDAH ada di kernel source.
+      # Manual hook SUDAH terintegrasi di kernel source.
       # Tidak menjalankan kernel/setup.sh.
+      #
+      # ReSukiSU manager/source tetap disediakan secara terpisah.
       # ============================================================
 
       - name: Clone ReSukiSU Source
@@ -344,10 +345,11 @@ jobs:
 
             sed -i \
               's/^CONFIG_LOCALVERSION=".*"/CONFIG_LOCALVERSION="'"${{ inputs.LOCALVERSION }}"'"/' \
-              "$CFG"
+              "$OUT_DIR/.config"
 
-            if ! grep -q "^CONFIG_LOCALVERSION=" "$CFG"; then
-              echo 'CONFIG_LOCALVERSION="${{ inputs.LOCALVERSION }}"' >> "$CFG"
+            if ! grep -q "^CONFIG_LOCALVERSION=" "$OUT_DIR/.config"; then
+              echo "CONFIG_LOCALVERSION=\"${{ inputs.LOCALVERSION }}\"" \
+                >> "$OUT_DIR/.config"
             fi
 
           fi
@@ -358,10 +360,11 @@ jobs:
 
           sed -i \
             's/^CONFIG_DEFAULT_HOSTNAME=".*"/CONFIG_DEFAULT_HOSTNAME="'"${{ inputs.DEFAULT_HOSTNAME }}"'"/' \
-            "$CFG"
+            "$OUT_DIR/.config"
 
-          if ! grep -q "^CONFIG_DEFAULT_HOSTNAME=" "$CFG"; then
-            echo 'CONFIG_DEFAULT_HOSTNAME="${{ inputs.DEFAULT_HOSTNAME }}"' >> "$CFG"
+          if ! grep -q "^CONFIG_DEFAULT_HOSTNAME=" "$OUT_DIR/.config"; then
+            echo "CONFIG_DEFAULT_HOSTNAME=\"${{ inputs.DEFAULT_HOSTNAME }}\"" \
+              >> "$OUT_DIR/.config"
           fi
 
           # --------------------------------------------------------
@@ -384,8 +387,9 @@ jobs:
             "$CFG" || true
 
           echo ""
-          echo "CONFIG_KSU_MANUAL_HOOK TIDAK DIPAKSA"
-          echo "karena manual hook sudah berada di source."
+          echo "CONFIG_KSU_MANUAL_HOOK TIDAK DIPAKSA."
+          echo "Manual hook dianggap sudah terintegrasi"
+          echo "langsung di source kernel."
 
           echo "========================================"
 
@@ -421,12 +425,23 @@ jobs:
           CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
           CONFIG_LOCALVERSION_AUTO=n"
 
+          # --------------------------------------------------------
+          # LTO
+          # --------------------------------------------------------
+
           if [ "${{ inputs.USE_LTO }}" == "thin" ]; then
+
             MAKE_ARGS="$MAKE_ARGS LTO_CLANG_THIN=1"
 
           elif [ "${{ inputs.USE_LTO }}" == "full" ]; then
+
             MAKE_ARGS="$MAKE_ARGS LTO_CLANG_FULL=1"
+
           fi
+
+          # --------------------------------------------------------
+          # Local version
+          # --------------------------------------------------------
 
           if [ -n "${{ inputs.LOCALVERSION }}" ]; then
             MAKE_ARGS="$MAKE_ARGS LOCALVERSION=${{ inputs.LOCALVERSION }}"
@@ -435,6 +450,16 @@ jobs:
           echo "========================================"
           echo "          BUILDING KERNEL"
           echo "========================================"
+
+          echo ""
+          echo "ARCH: $ARCH"
+          echo "DEFCONFIG: ${{ inputs.KERNEL_DEFCONFIG }}"
+          echo "LTO: ${{ inputs.USE_LTO }}"
+          echo "LOCALVERSION: ${{ inputs.LOCALVERSION }}"
+          echo "BUILD USER: ${{ inputs.BUILD_USER }}"
+          echo "BUILD HOST: ${{ inputs.BUILD_HOST }}"
+          echo "DEFAULT HOSTNAME: ${{ inputs.DEFAULT_HOSTNAME }}"
+          echo ""
 
           make \
             $MAKE_ARGS \
@@ -453,7 +478,7 @@ jobs:
           path: ${{ env.KERNEL_DIR }}/build.log
 
       # ============================================================
-      # Find Kernel Image
+      # Find Kernel Image & Prepare AnyKernel3
       # ============================================================
 
       - name: Find Image & Prepare AnyKernel3 Zip
