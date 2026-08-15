@@ -31,7 +31,7 @@ on:
         required: true
         default: "none"
         type: choice
-        options: [none, KernelSU, KernelSU-Next]
+        options: [none, KernelSU, KernelSU-Next, ReSukiSU]
       USE_LTO:
         required: true
         default: "full"
@@ -90,14 +90,17 @@ jobs:
           tar -xf clang-r383902.tar.gz -C "$CLANG_DIR"
           rm clang-r383902.tar.gz
 
-      - name: Setup KernelSU
+      - name: Setup KernelSU / ReSukiSU (Ghnkz-hub)
         if: inputs.USE_KSU != 'none'
         working-directory: ${{ env.KERNEL_DIR }}
         run: |
           if [ "${{ inputs.USE_KSU }}" == "KernelSU" ]; then
             curl -LSs https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh | bash -
-          else
+          elif [ "${{ inputs.USE_KSU }}" == "KernelSU-Next" ]; then
             curl -LSs https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh | bash -s next
+          elif [ "${{ inputs.USE_KSU }}" == "ReSukiSU" ]; then
+            # Menggunakan branch syscall dari repository Ghnkz-hub
+            curl -LSs https://raw.githubusercontent.com/Ghnkz-hub/KernelSU-Next/syscall/kernel/setup.sh | bash -s syscall
           fi
 
       - name: Fix Legacy Kernel DTC & YYLLOC Issues
@@ -165,7 +168,7 @@ jobs:
           CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
           CONFIG_LOCALVERSION_AUTO=n"
 
-            if [ "${{ inputs.USE_LTO }}" == "thin" ]; then
+          if [ "${{ inputs.USE_LTO }}" == "thin" ]; then
             MAKE_ARGS="$MAKE_ARGS LTO_CLANG_THIN=1"
           elif [ "${{ inputs.USE_LTO }}" == "full" ]; then
             MAKE_ARGS="$MAKE_ARGS LTO_CLANG_FULL=1"
