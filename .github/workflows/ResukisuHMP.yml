@@ -4,14 +4,14 @@ on:
   workflow_dispatch:
     inputs:
       KERNEL_URL:
-        description: 'URL Repository Kernel (Contoh: https://github.com/user/repo.git)'
+        description: 'URL Repository Kernel (HTTPS)'
         required: true
         type: string
       KERNEL_BRANCH:
         description: 'Branch Kernel'
         required: true
         type: string
-        default: 'main'
+        default: 'master'
       DEFCONFIG_NAME:
         description: 'Nama Defconfig (misal: lavender-perf_defconfig)'
         required: true
@@ -30,6 +30,20 @@ on:
         required: true
         type: string
         default: 'redmi'
+      DEFAULT_HOSTNAME:
+        description: 'DEFAULT_HOSTNAME'
+        required: true
+        type: string
+        default: 'redmi'
+      USE_LTO:
+        description: 'USE_LTO'
+        required: true
+        type: choice
+        default: 'none'
+        options:
+          - 'none'
+          - 'thin'
+          - 'full'
       ARCH:
         description: 'ARCH'
         required: true
@@ -43,9 +57,8 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Source Code (Full Link)
+      - name: Checkout Source Code Kernel (Full Link)
         run: |
-          # Bersihkan workspace dan clone repo menggunakan link full
           rm -rf *
           git clone --depth=1 ${{ inputs.KERNEL_URL }} -b ${{ inputs.KERNEL_BRANCH }} .
 
@@ -58,23 +71,29 @@ jobs:
         run: |
           mkdir -p $GITHUB_WORKSPACE/toolchains
           cd $GITHUB_WORKSPACE/toolchains
+
+          # Download AOSP Clang 11 (r383737b)
           git clone --depth=1 https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86 -b android11-release clang-aosp
+          
+          # Download GCC AArch64 & ARM32 Binutils
           git clone --depth=1 https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9 -b android11-release gcc-aarch64
           git clone --depth=1 https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9 -b android11-release gcc-arm
 
-      - name: Integrate ReSukiSU & Inject Config
+      - name: Integrate ReSukiSU via Curl & Inject Config
         run: |
-          # 1. Fetch source ReSukiSU
-          curl -LSs "https://raw.githubusercontent.com/rsuntk/ReSukiSU/main/kernel/setup.sh" | bash -s main
+          # 1. Fetch source via Curl (Menggunakan mirror setup script utama)
+          curl -LSs "https://raw.githubusercontent.com/rifs28/ReSukiSU/main/kernel/setup.sh" | bash -s main || \
+          curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s main
 
-          # 2. Inject ReSukiSU Manual Hook Config
+          # 2. Inject Config ReSukiSU Manual Hook ke Defconfig Target
           DEFCONFIG_PATH="arch/${{ inputs.ARCH }}/configs/${{ inputs.DEFCONFIG_NAME }}"
           echo "CONFIG_KSU=y" >> $DEFCONFIG_PATH
           echo "CONFIG_KSU_MANUAL_HOOK=y" >> $DEFCONFIG_PATH
 
-      - name: Build Kernel
+      - name: Build Kernel Process
         run: |
           TC_DIR="$GITHUB_WORKSPACE/toolchains"
+          
           export PATH="$TC_DIR/clang-aosp/clang-r383737b/bin:$TC_DIR/gcc-aarch64/bin:$TC_DIR/gcc-arm/bin:$PATH"
           export ARCH=${{ inputs.ARCH }}
           export SUBARCH=${{ inputs.ARCH }}
@@ -85,8 +104,10 @@ jobs:
             export CONFIG_LOCALVERSION="-${{ inputs.LOCALVERSION }}"
           fi
 
-          # Build
+          # Generate Configuration
           make O=out ${{ inputs.DEFCONFIG_NAME }}
+
+          # Execute Compilation
           make -j$(nproc) O=out \
             CC=clang \
             CLANG_TRIPLE=aarch64-linux-gnu- \
@@ -101,3 +122,4 @@ jobs:
             out/arch/${{ inputs.ARCH }}/boot/Image
             out/arch/${{ inputs.ARCH }}/boot/Image.gz
             out/arch/${{ inputs.ARCH }}/boot/Image.gz-dtb
+            out/arch/${{ inputs.ARCH }}/boot/dtbo.img
