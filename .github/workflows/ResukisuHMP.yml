@@ -1,10 +1,10 @@
-name: 🤖 Build Android Kernel 4.4 (AOSP Clang + ReSukiSU Manual Hook)
+name: 🤖 Build Android Kernel 4.4 (AOSP Clang + ReSukiSU)
 
 on:
   workflow_dispatch:
     inputs:
       KERNEL_URL:
-        description: 'URL Repository Kernel (HTTPS)'
+        description: 'URL Repository Kernel (Contoh: https://github.com/user/repo.git)'
         required: true
         type: string
       KERNEL_BRANCH:
@@ -30,20 +30,6 @@ on:
         required: true
         type: string
         default: 'redmi'
-      DEFAULT_HOSTNAME:
-        description: 'DEFAULT_HOSTNAME'
-        required: true
-        type: string
-        default: 'redmi'
-      USE_LTO:
-        description: 'USE_LTO'
-        required: true
-        type: choice
-        default: 'none'
-        options:
-          - 'none'
-          - 'thin'
-          - 'full'
       ARCH:
         description: 'ARCH'
         required: true
@@ -57,11 +43,11 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Target Kernel Repository
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ inputs.KERNEL_URL }}
-          ref: ${{ inputs.KERNEL_BRANCH }}
+      - name: Checkout Source Code (Full Link)
+        run: |
+          # Bersihkan workspace dan clone repo menggunakan link full
+          rm -rf *
+          git clone --depth=1 ${{ inputs.KERNEL_URL }} -b ${{ inputs.KERNEL_BRANCH }} .
 
       - name: Setup Build Dependencies
         run: |
@@ -72,11 +58,7 @@ jobs:
         run: |
           mkdir -p $GITHUB_WORKSPACE/toolchains
           cd $GITHUB_WORKSPACE/toolchains
-
-          # Download AOSP Clang 11 (r383737b)
           git clone --depth=1 https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86 -b android11-release clang-aosp
-          
-          # Download GCC AArch64 & ARM32 (Binutils)
           git clone --depth=1 https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9 -b android11-release gcc-aarch64
           git clone --depth=1 https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9 -b android11-release gcc-arm
 
@@ -85,31 +67,26 @@ jobs:
           # 1. Fetch source ReSukiSU
           curl -LSs "https://raw.githubusercontent.com/rsuntk/ReSukiSU/main/kernel/setup.sh" | bash -s main
 
-          # 2. Inject ReSukiSU Manual Hook Config ke Defconfig
+          # 2. Inject ReSukiSU Manual Hook Config
           DEFCONFIG_PATH="arch/${{ inputs.ARCH }}/configs/${{ inputs.DEFCONFIG_NAME }}"
-          
           echo "CONFIG_KSU=y" >> $DEFCONFIG_PATH
           echo "CONFIG_KSU_MANUAL_HOOK=y" >> $DEFCONFIG_PATH
 
-      - name: Build Kernel Process
+      - name: Build Kernel
         run: |
           TC_DIR="$GITHUB_WORKSPACE/toolchains"
-          
           export PATH="$TC_DIR/clang-aosp/clang-r383737b/bin:$TC_DIR/gcc-aarch64/bin:$TC_DIR/gcc-arm/bin:$PATH"
           export ARCH=${{ inputs.ARCH }}
           export SUBARCH=${{ inputs.ARCH }}
           export KBUILD_BUILD_USER="${{ inputs.BUILD_USER }}"
           export KBUILD_BUILD_HOST="${{ inputs.BUILD_HOST }}"
 
-          # Opsi localversion jika diisi
           if [ -n "${{ inputs.LOCALVERSION }}" ]; then
             export CONFIG_LOCALVERSION="-${{ inputs.LOCALVERSION }}"
           fi
 
-          # Make Defconfig
+          # Build
           make O=out ${{ inputs.DEFCONFIG_NAME }}
-
-          # Execute Compile
           make -j$(nproc) O=out \
             CC=clang \
             CLANG_TRIPLE=aarch64-linux-gnu- \
@@ -124,4 +101,3 @@ jobs:
             out/arch/${{ inputs.ARCH }}/boot/Image
             out/arch/${{ inputs.ARCH }}/boot/Image.gz
             out/arch/${{ inputs.ARCH }}/boot/Image.gz-dtb
-            out/arch/${{ inputs.ARCH }}/boot/dtbo.img
