@@ -155,8 +155,8 @@ jobs:
           export SUBARCH=arm64
           export HOSTCFLAGS="-fcommon"
           export HOSTCXXFLAGS="-fcommon"
-          # Tambahan flag -Wno-error=nonnull dan -Wno-error=address-of-packed-member untuk mengatasi error kompilasi kernel lama
-          export KCFLAGS="-O3 -fomit-frame-pointer -fno-stack-protector -Wno-error -Wno-parentheses -Wno-unused-value -Wno-sometimes-uninitialized -Wno-error=nonnull -Wno-error=address-of-packed-member"
+          # KCFLAGS dibersihkan dari opsi yang tidak dikenal oleh compiler
+          export KCFLAGS="-O3 -fomit-frame-pointer -fno-stack-protector -Wno-error -Wno-parentheses -Wno-unused-value -Wno-error=nonnull -Wno-error=address-of-packed-member"
           export KBUILD_BUILD_USER="${{ inputs.BUILD_USER }}"
           export KBUILD_BUILD_HOST="${{ inputs.BUILD_HOST }}"
           export CC="ccache clang"
