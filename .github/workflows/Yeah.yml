@@ -1,4 +1,4 @@
-Name: 🤖 Build Android Kernel 4.4 (NewCam HMP Extreme + ext4 Boost)
+name: 🤖 Build Android Kernel 4.4 (NewCam HMP Extreme + ext4 Boost)
 
 on:
   workflow_dispatch:
