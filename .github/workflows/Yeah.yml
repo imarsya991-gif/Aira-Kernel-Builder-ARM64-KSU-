@@ -1,4 +1,4 @@
-name: 🤖 Build Android Kernel 4.4 (AOSP Clang + ReSukiSU Manual Hook)
+Name: 🤖 Build Android Kernel 4.4 (AOSP Clang + ReSukiSU Manual Hook)
 
 on:
   workflow_dispatch:
@@ -142,10 +142,6 @@ jobs:
 
       # ============================================================
       # Integrate ReSukiSU (KernelSU driver) into Kernel Source
-      #
-      # Menanam driver drivers/kernelsu/ + wiring Kconfig/Makefile
-      # secara otomatis lewat setup.sh resmi ReSukiSU, dikunci ke
-      # tag v4.1.0 supaya versi manager konsisten di setiap build.
       # ============================================================
 
       - name: Integrate ReSukiSU into Kernel Source
@@ -201,6 +197,31 @@ jobs:
           echo "========================================"
 
       # ============================================================
+      # Patch Defconfig File (FIX KSU MANUAL HOOK)
+      # ============================================================
+
+      - name: Patch Defconfig File Direct
+        working-directory: ${{ env.KERNEL_DIR }}
+        run: |
+          DEFCONFIG_PATH="arch/arm64/configs/${{ inputs.KERNEL_DEFCONFIG }}"
+
+          echo "========================================"
+          echo "     PATCHING DEFCONFIG DIRECTLY"
+          echo "========================================"
+
+          if [ -f "$DEFCONFIG_PATH" ]; then
+            sed -i '/CONFIG_KSU/d' "$DEFCONFIG_PATH"
+            echo "CONFIG_KSU=y" >> "$DEFCONFIG_PATH"
+            echo "CONFIG_KSU_MANUAL_HOOK=y" >> "$DEFCONFIG_PATH"
+            echo "✅ Berhasil menyuntikkan CONFIG_KSU & CONFIG_KSU_MANUAL_HOOK ke $DEFCONFIG_PATH"
+          else
+            echo "❌ Defconfig $DEFCONFIG_PATH tidak ditemukan!"
+            exit 1
+          fi
+
+          echo "========================================"
+
+      # ============================================================
       # Verify Manual Hook
       # ============================================================
 
@@ -234,18 +255,6 @@ jobs:
 
           grep -R \
             "CONFIG_KSU_MANUAL_HOOK" \
-            fs \
-            kernel \
-            drivers \
-            security \
-            2>/dev/null \
-            | head -100 || true
-
-          echo ""
-          echo "[3] Checking manual hook references..."
-
-          grep -R \
-            "KSU_MANUAL_HOOK" \
             fs \
             kernel \
             drivers \
@@ -337,6 +346,13 @@ jobs:
           echo "========================================"
 
           # --------------------------------------------------------
+          # Enforce KSU Configurations
+          # --------------------------------------------------------
+
+          $SCRIPT --file "$CFG" -e CONFIG_KSU || true
+          $SCRIPT --file "$CFG" -e CONFIG_KSU_MANUAL_HOOK || true
+
+          # --------------------------------------------------------
           # Compiler optimization
           # --------------------------------------------------------
 
@@ -424,10 +440,10 @@ jobs:
 
           echo ""
 
-          if grep -q "^CONFIG_KSU=y" "$CFG"; then
-            echo "✅ CONFIG_KSU=y berhasil masuk ke final config."
+          if grep -q "^CONFIG_KSU=y" "$CFG" && grep -q "^CONFIG_KSU_MANUAL_HOOK=y" "$CFG"; then
+            echo "✅ CONFIG_KSU=y dan CONFIG_KSU_MANUAL_HOOK=y aktif pada final config."
           else
-            echo "❌ CONFIG_KSU=y HILANG dari final config! Cek step Integrate ReSukiSU."
+            echo "❌ Konfigurasi KSU belum aktif sepenuhnya di final config!"
           fi
 
           echo "========================================"
