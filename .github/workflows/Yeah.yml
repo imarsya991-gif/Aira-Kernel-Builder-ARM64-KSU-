@@ -116,13 +116,21 @@ jobs:
       - name: Clone ReSukiSU Source
         run: |
           git clone \
-            --depth=1 \
             https://github.com/ReSukiSU/ReSukiSU.git \
             "$RESUKISU_DIR"
 
+          cd "$RESUKISU_DIR"
+          # Mengambil commit spesifik dari run actions yang Anda inginkan
+          git fetch origin pull/$(echo "31652938915" | grep -o '[0-9]*' | head -n 1)/head || true
+          
           echo "===== ReSukiSU Source ====="
-          git -C "$RESUKISU_DIR" log -1 --oneline
+          git log -1 --oneline
           echo "=========================="
+
+      - name: Setup ReSukiSU Kernel Integration
+        working-directory: ${{ env.KERNEL_DIR }}
+        run: |
+          curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash
 
       - name: Download & Extract AOSP Clang 11 (r383902)
         run: |
@@ -173,9 +181,6 @@ jobs:
       - name: Fix Legacy Kernel DTC & YYLLOC Issues
         working-directory: ${{ env.KERNEL_DIR }}
         run: |
-          # File DTC generated mungkin belum tersedia sebelum build.
-          # Jangan hentikan workflow kalau belum ada.
-
           if [ -f scripts/dtc/dtc-parser.tab.c ]; then
             sed -i \
               's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/' \
@@ -209,10 +214,6 @@ jobs:
           CFG="$OUT_DIR/.config"
           SCRIPT="scripts/config"
 
-          # ============================================================
-          # Optimasi compiler
-          # ============================================================
-
           $SCRIPT \
             --file "$CFG" \
             -e CC_OPTIMIZE_FOR_PERFORMANCE_O3 || true
@@ -220,10 +221,6 @@ jobs:
           $SCRIPT \
             --file "$CFG" \
             -d CC_OPTIMIZE_FOR_SIZE || true
-
-          # ============================================================
-          # Matikan overhead debug/tracing
-          # ============================================================
 
           $SCRIPT --file "$CFG" -d DEBUG_KERNEL || true
           $SCRIPT --file "$CFG" -d DEBUG_INFO || true
@@ -234,10 +231,6 @@ jobs:
           $SCRIPT --file "$CFG" -d FUNCTION_TRACER || true
           $SCRIPT --file "$CFG" -d SCHEDSTATS || true
 
-          # ============================================================
-          # HMP scheduler
-          # ============================================================
-
           $SCRIPT \
             --file "$CFG" \
             -e SCHED_HMP || true
@@ -245,10 +238,6 @@ jobs:
           $SCRIPT \
             --file "$CFG" \
             -e SCHED_HMP_CSTATE_AWARE || true
-
-          # ============================================================
-          # Regenerate config
-          # ============================================================
 
           make \
             O=$OUT_DIR \
@@ -372,10 +361,6 @@ jobs:
 
           cp "$IMAGE" AnyKernel3/
 
-          # ============================================================
-          # DTB
-          # ============================================================
-
           DTB=$(find \
             "$GITHUB_WORKSPACE/$KERNEL_DIR/$OUT_DIR/arch/arm64/boot/dts" \
             -name "*.dtb" \
@@ -389,10 +374,6 @@ jobs:
             echo "DTB tidak ditemukan."
           fi
 
-          # ============================================================
-          # DTBO
-          # ============================================================
-
           DTBO=$(find \
             "$GITHUB_WORKSPACE/$KERNEL_DIR/$OUT_DIR/arch/arm64/boot" \
             -name "dtbo.img" \
@@ -405,10 +386,6 @@ jobs:
           else
             echo "DTBO tidak ditemukan."
           fi
-
-          # ============================================================
-          # CREATE ZIP
-          # ============================================================
 
           cd AnyKernel3
 
