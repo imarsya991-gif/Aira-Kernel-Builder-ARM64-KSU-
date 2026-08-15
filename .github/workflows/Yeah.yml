@@ -105,9 +105,12 @@ jobs:
       - name: Fix Legacy Kernel DTC & YYLLOC Issues
         working-directory: ${{ env.KERNEL_DIR }}
         run: |
-          # Fix yylloc multiple definition pada GCC 10+
-          sed -i 's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/' scripts/dtc/dtc-parser.tab.c || true
-          sed -i 's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/' scripts/dtc/dtc-lexer.lex.c_shipped || true
+          if [ -f "scripts/dtc/dtc-parser.tab.c" ]; then
+            sed -i 's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/' scripts/dtc/dtc-parser.tab.c || true
+          fi
+          if [ -f "scripts/dtc/dtc-lexer.lex.c_shipped" ]; then
+            sed -i 's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/' scripts/dtc/dtc-lexer.lex.c_shipped || true
+          fi
 
       - name: Execute Defconfig
         working-directory: ${{ env.KERNEL_DIR }}
@@ -125,11 +128,9 @@ jobs:
           CFG="$OUT_DIR/.config"
           SCRIPT="scripts/config"
 
-          # Optimasi compiler: pakai -O3 bukan -O2/-Os, matikan optimize-for-size
           $SCRIPT --file "$CFG" -e CC_OPTIMIZE_FOR_PERFORMANCE_O3 || true
           $SCRIPT --file "$CFG" -d CC_OPTIMIZE_FOR_SIZE || true
 
-          # Matikan overhead debug/tracing yang nggak perlu di build harian
           $SCRIPT --file "$CFG" -d DEBUG_KERNEL || true
           $SCRIPT --file "$CFG" -d DEBUG_INFO || true
           $SCRIPT --file "$CFG" -d DEBUG_FS || true
@@ -139,7 +140,6 @@ jobs:
           $SCRIPT --file "$CFG" -d FUNCTION_TRACER || true
           $SCRIPT --file "$CFG" -d SCHEDSTATS || true
 
-          # HMP scheduler tetap aktif (sesuai preferensi sebelumnya)
           $SCRIPT --file "$CFG" -e SCHED_HMP || true
           $SCRIPT --file "$CFG" -e SCHED_HMP_CSTATE_AWARE || true
 
@@ -155,8 +155,8 @@ jobs:
           export SUBARCH=arm64
           export HOSTCFLAGS="-fcommon"
           export HOSTCXXFLAGS="-fcommon"
-          # Ditambahkan flag tambahan -Wno-error untuk mencegah error kompilasi pada kernel lama
-          export KCFLAGS="-O3 -fomit-frame-pointer -fno-stack-protector -Wno-error -Wno-parentheses -Wno-unused-value -Wno-sometimes-uninitialized"
+          # Tambahan flag -Wno-error=nonnull dan -Wno-error=address-of-packed-member untuk mengatasi error kompilasi kernel lama
+          export KCFLAGS="-O3 -fomit-frame-pointer -fno-stack-protector -Wno-error -Wno-parentheses -Wno-unused-value -Wno-sometimes-uninitialized -Wno-error=nonnull -Wno-error=address-of-packed-member"
           export KBUILD_BUILD_USER="${{ inputs.BUILD_USER }}"
           export KBUILD_BUILD_HOST="${{ inputs.BUILD_HOST }}"
           export CC="ccache clang"
