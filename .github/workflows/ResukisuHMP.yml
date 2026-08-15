@@ -1,0 +1,127 @@
+name: 🤖 Build Android Kernel 4.4 (AOSP Clang + ReSukiSU Manual Hook)
+
+on:
+  workflow_dispatch:
+    inputs:
+      KERNEL_URL:
+        description: 'URL Repository Kernel (HTTPS)'
+        required: true
+        type: string
+      KERNEL_BRANCH:
+        description: 'Branch Kernel'
+        required: true
+        type: string
+        default: 'main'
+      DEFCONFIG_NAME:
+        description: 'Nama Defconfig (misal: lavender-perf_defconfig)'
+        required: true
+        type: string
+      LOCALVERSION:
+        description: 'Localversion tambahan (Opsional)'
+        required: false
+        type: string
+      BUILD_USER:
+        description: 'BUILD_USER'
+        required: true
+        type: string
+        default: 'xiaomi'
+      BUILD_HOST:
+        description: 'BUILD_HOST'
+        required: true
+        type: string
+        default: 'redmi'
+      DEFAULT_HOSTNAME:
+        description: 'DEFAULT_HOSTNAME'
+        required: true
+        type: string
+        default: 'redmi'
+      USE_LTO:
+        description: 'USE_LTO'
+        required: true
+        type: choice
+        default: 'none'
+        options:
+          - 'none'
+          - 'thin'
+          - 'full'
+      ARCH:
+        description: 'ARCH'
+        required: true
+        type: choice
+        default: 'arm64'
+        options:
+          - 'arm64'
+          - 'arm'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Target Kernel Repository
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.KERNEL_URL }}
+          ref: ${{ inputs.KERNEL_BRANCH }}
+
+      - name: Setup Build Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential bc bison flex libssl-dev libncurses-dev libelf-dev git curl make libstdc++6
+
+      - name: Download AOSP Clang 11 & GCC Toolchains
+        run: |
+          mkdir -p $GITHUB_WORKSPACE/toolchains
+          cd $GITHUB_WORKSPACE/toolchains
+
+          # Download AOSP Clang 11 (r383737b)
+          git clone --depth=1 https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86 -b android11-release clang-aosp
+          
+          # Download GCC AArch64 & ARM32 (Binutils)
+          git clone --depth=1 https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9 -b android11-release gcc-aarch64
+          git clone --depth=1 https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9 -b android11-release gcc-arm
+
+      - name: Integrate ReSukiSU & Inject Config
+        run: |
+          # 1. Fetch source ReSukiSU
+          curl -LSs "https://raw.githubusercontent.com/rsuntk/ReSukiSU/main/kernel/setup.sh" | bash -s main
+
+          # 2. Inject ReSukiSU Manual Hook Config ke Defconfig
+          DEFCONFIG_PATH="arch/${{ inputs.ARCH }}/configs/${{ inputs.DEFCONFIG_NAME }}"
+          
+          echo "CONFIG_KSU=y" >> $DEFCONFIG_PATH
+          echo "CONFIG_KSU_MANUAL_HOOK=y" >> $DEFCONFIG_PATH
+
+      - name: Build Kernel Process
+        run: |
+          TC_DIR="$GITHUB_WORKSPACE/toolchains"
+          
+          export PATH="$TC_DIR/clang-aosp/clang-r383737b/bin:$TC_DIR/gcc-aarch64/bin:$TC_DIR/gcc-arm/bin:$PATH"
+          export ARCH=${{ inputs.ARCH }}
+          export SUBARCH=${{ inputs.ARCH }}
+          export KBUILD_BUILD_USER="${{ inputs.BUILD_USER }}"
+          export KBUILD_BUILD_HOST="${{ inputs.BUILD_HOST }}"
+
+          # Opsi localversion jika diisi
+          if [ -n "${{ inputs.LOCALVERSION }}" ]; then
+            export CONFIG_LOCALVERSION="-${{ inputs.LOCALVERSION }}"
+          fi
+
+          # Make Defconfig
+          make O=out ${{ inputs.DEFCONFIG_NAME }}
+
+          # Execute Compile
+          make -j$(nproc) O=out \
+            CC=clang \
+            CLANG_TRIPLE=aarch64-linux-gnu- \
+            CROSS_COMPILE=aarch64-linux-android- \
+            CROSS_COMPILE_ARM32=arm-linux-androideabi-
+
+      - name: Upload Kernel Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kernel-${{ inputs.DEFCONFIG_NAME }}
+          path: |
+            out/arch/${{ inputs.ARCH }}/boot/Image
+            out/arch/${{ inputs.ARCH }}/boot/Image.gz
+            out/arch/${{ inputs.ARCH }}/boot/Image.gz-dtb
+            out/arch/${{ inputs.ARCH }}/boot/dtbo.img
