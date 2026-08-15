@@ -58,7 +58,8 @@ env:
   KERNEL_DIR: kernel_source
   CLANG_DIR: clang
   OUT_DIR: out
-  RESUKISU_DIR: resukisu
+  RESUKISU_LOCK_REF: v4.1.0
+  RESUKISU_LOCK_COMMIT: 0d27e685cb9f1b873cd334371c0d8b6ea4c3aea9
 
 jobs:
   build:
@@ -140,27 +141,62 @@ jobs:
           echo "========================================"
 
       # ============================================================
-      # Clone ReSukiSU Source
+      # Integrate ReSukiSU (KernelSU driver) into Kernel Source
       #
-      # Manual hook SUDAH terintegrasi di kernel source.
-      # Tidak menjalankan kernel/setup.sh.
-      #
-      # ReSukiSU manager/source tetap disediakan secara terpisah.
+      # Menanam driver drivers/kernelsu/ + wiring Kconfig/Makefile
+      # secara otomatis lewat setup.sh resmi ReSukiSU, dikunci ke
+      # tag v4.1.0 supaya versi manager konsisten di setiap build.
       # ============================================================
 
-      - name: Clone ReSukiSU Source
+      - name: Integrate ReSukiSU into Kernel Source
+        working-directory: ${{ env.KERNEL_DIR }}
         run: |
-          git clone \
-            --depth=1 \
-            https://github.com/ReSukiSU/ReSukiSU.git \
-            "$RESUKISU_DIR"
-
           echo "========================================"
-          echo "        RESUKISU SOURCE"
+          echo "     INTEGRATING RESUKISU DRIVER"
+          echo "     Locked to: $RESUKISU_LOCK_REF"
           echo "========================================"
 
-          git -C "$RESUKISU_DIR" log -1 --oneline
-          git -C "$RESUKISU_DIR" describe --tags --always || true
+          curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" \
+            | bash -s "$RESUKISU_LOCK_REF"
+
+          echo ""
+          echo "[Verify] drivers/kernelsu exists:"
+          ls -la drivers/kernelsu/ 2>/dev/null || echo "❌ drivers/kernelsu masih tidak ada!"
+
+          echo ""
+          echo "[Verify] source line di drivers/Kconfig:"
+          grep -n "kernelsu" drivers/Kconfig || echo "❌ Tidak ada source line"
+
+          echo ""
+          echo "[Verify] obj line di drivers/Makefile:"
+          grep -n "kernelsu" drivers/Makefile || echo "❌ Tidak ada obj line"
+
+          echo ""
+          echo "========================================"
+          echo "     VERIFYING LOCKED VERSION"
+          echo "========================================"
+
+          KSU_SRC_DIR=$(readlink -f drivers/kernelsu)
+
+          echo "Path sumber KSU: $KSU_SRC_DIR"
+
+          if git -C "$KSU_SRC_DIR" rev-parse 2>/dev/null; then
+            echo ""
+            echo "Git describe (tag/commit yang ke-checkout):"
+            git -C "$KSU_SRC_DIR" describe --tags --always
+
+            ACTUAL_COMMIT=$(git -C "$KSU_SRC_DIR" rev-parse HEAD)
+            echo "Commit aktual : $ACTUAL_COMMIT"
+            echo "Commit expect : $RESUKISU_LOCK_COMMIT"
+
+            if [ "$ACTUAL_COMMIT" = "$RESUKISU_LOCK_COMMIT" ]; then
+              echo "✅ TERKUNCI ke $RESUKISU_LOCK_REF dengan benar."
+            else
+              echo "⚠️  PERINGATAN: commit TIDAK cocok dengan $RESUKISU_LOCK_REF yang diharapkan!"
+            fi
+          else
+            echo "⚠️  Bukan git repo (symlink ke folder non-git) — tidak bisa verifikasi tag otomatis."
+          fi
 
           echo "========================================"
 
@@ -387,9 +423,12 @@ jobs:
             "$CFG" || true
 
           echo ""
-          echo "CONFIG_KSU_MANUAL_HOOK TIDAK DIPAKSA."
-          echo "Manual hook dianggap sudah terintegrasi"
-          echo "langsung di source kernel."
+
+          if grep -q "^CONFIG_KSU=y" "$CFG"; then
+            echo "✅ CONFIG_KSU=y berhasil masuk ke final config."
+          else
+            echo "❌ CONFIG_KSU=y HILANG dari final config! Cek step Integrate ReSukiSU."
+          fi
 
           echo "========================================"
 
