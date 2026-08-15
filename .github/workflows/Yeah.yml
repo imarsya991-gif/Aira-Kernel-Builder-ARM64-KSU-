@@ -1,4 +1,4 @@
-Name: 🤖 Build Android Kernel 4.4 (AOSP Clang + ReSukiSU Manual Hook)
+name: 🤖 Build Android Kernel 4.4 (AOSP Clang + ReSukiSU Manual Hook)
 
 on:
   workflow_dispatch:
