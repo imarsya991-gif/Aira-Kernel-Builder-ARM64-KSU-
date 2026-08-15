@@ -7,36 +7,44 @@ on:
         description: 'URL Repository Kernel (HTTPS)'
         required: true
         type: string
+
       KERNEL_BRANCH:
         description: 'Branch Kernel'
         required: true
         type: string
+
       KERNEL_DEFCONFIG:
         description: 'Nama Defconfig (misal: lavender-perf_defconfig)'
         required: true
         type: string
+
       LOCALVERSION:
         description: 'Localversion tambahan (Opsional)'
         required: false
         type: string
+
       BUILD_USER:
         required: true
         default: "xiaomi"
         type: string
+
       BUILD_HOST:
         required: true
         default: "redmi"
         type: string
+
       USE_KSU:
         required: true
         default: "none"
         type: choice
         options: [none, KernelSU, KernelSU-Next]
+
       USE_LTO:
         required: true
         default: "full"
         type: choice
         options: [none, thin, full]
+
       ARCH:
         required: true
         default: "arm64"
@@ -111,6 +119,7 @@ jobs:
         working-directory: ${{ env.KERNEL_DIR }}
         run: |
           export PATH="$GITHUB_WORKSPACE/$CLANG_DIR/bin:$PATH"
+
           make O=$OUT_DIR ARCH=arm64 CC=clang \
             CROSS_COMPILE=aarch64-linux-gnu- \
             CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
@@ -120,14 +129,26 @@ jobs:
         working-directory: ${{ env.KERNEL_DIR }}
         run: |
           export PATH="$GITHUB_WORKSPACE/$CLANG_DIR/bin:$PATH"
+
           CFG="$OUT_DIR/.config"
           SCRIPT="scripts/config"
 
-          # Optimasi compiler: pakai -O3 bukan -O2/-Os, matikan optimize-for-size
+          # ============================================================
+          # KernelSU Manual Hook
+          # ============================================================
+          if [ "${{ inputs.USE_KSU }}" != "none" ]; then
+            $SCRIPT --file "$CFG" -e KSU_MANUAL_HOOK || true
+          fi
+
+          # ============================================================
+          # Optimasi compiler
+          # ============================================================
           $SCRIPT --file "$CFG" -e CC_OPTIMIZE_FOR_PERFORMANCE_O3 || true
           $SCRIPT --file "$CFG" -d CC_OPTIMIZE_FOR_SIZE || true
 
-          # Matikan overhead debug/tracing yang nggak perlu di build harian
+          # ============================================================
+          # Matikan overhead debug/tracing
+          # ============================================================
           $SCRIPT --file "$CFG" -d DEBUG_KERNEL || true
           $SCRIPT --file "$CFG" -d DEBUG_INFO || true
           $SCRIPT --file "$CFG" -d DEBUG_FS || true
@@ -137,11 +158,29 @@ jobs:
           $SCRIPT --file "$CFG" -d FUNCTION_TRACER || true
           $SCRIPT --file "$CFG" -d SCHEDSTATS || true
 
-          # HMP scheduler tetap aktif (sesuai preferensi sebelumnya)
+          # ============================================================
+          # HMP scheduler
+          # ============================================================
           $SCRIPT --file "$CFG" -e SCHED_HMP || true
           $SCRIPT --file "$CFG" -e SCHED_HMP_CSTATE_AWARE || true
 
+          # ============================================================
+          # Regenerate config
+          # ============================================================
           make O=$OUT_DIR ARCH=arm64 CC=clang olddefconfig
+
+          # ============================================================
+          # Verify KernelSU Manual Hook
+          # ============================================================
+          echo "===== KernelSU CONFIG ====="
+
+          if grep -q '^CONFIG_KSU_MANUAL_HOOK=y$' "$CFG"; then
+            echo "CONFIG_KSU_MANUAL_HOOK=y"
+          else
+            echo "WARNING: CONFIG_KSU_MANUAL_HOOK tidak aktif"
+          fi
+
+          echo "==========================="
 
       - name: Build Kernel
         working-directory: ${{ env.KERNEL_DIR }}
@@ -151,11 +190,15 @@ jobs:
           export PATH="/usr/lib/ccache:$GITHUB_WORKSPACE/$CLANG_DIR/bin:$PATH"
           export ARCH=arm64
           export SUBARCH=arm64
+
           export HOSTCFLAGS="-fcommon"
           export HOSTCXXFLAGS="-fcommon"
+
           export KCFLAGS="-O3 -fomit-frame-pointer -fno-stack-protector -Wno-error"
+
           export KBUILD_BUILD_USER="${{ inputs.BUILD_USER }}"
           export KBUILD_BUILD_HOST="${{ inputs.BUILD_HOST }}"
+
           export CC="ccache clang"
 
           MAKE_ARGS="ARCH=arm64 \
@@ -165,7 +208,7 @@ jobs:
           CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
           CONFIG_LOCALVERSION_AUTO=n"
 
-            if [ "${{ inputs.USE_LTO }}" == "thin" ]; then
+          if [ "${{ inputs.USE_LTO }}" == "thin" ]; then
             MAKE_ARGS="$MAKE_ARGS LTO_CLANG_THIN=1"
           elif [ "${{ inputs.USE_LTO }}" == "full" ]; then
             MAKE_ARGS="$MAKE_ARGS LTO_CLANG_FULL=1"
@@ -188,14 +231,17 @@ jobs:
         id: img
         working-directory: ${{ env.KERNEL_DIR }}
         run: |
-          IMAGE=$(find $PWD/$OUT_DIR/arch/arm64/boot -name "Image.gz-dtb" 2>/dev/null | head -n1)
+          IMAGE=$(find $PWD/$OUT_DIR/arch/arm64/boot \
+            -name "Image.gz-dtb" 2>/dev/null | head -n1)
 
           if [ -z "$IMAGE" ]; then
-            IMAGE=$(find $PWD/$OUT_DIR/arch/arm64/boot -name "Image.gz" 2>/dev/null | head -n1)
+            IMAGE=$(find $PWD/$OUT_DIR/arch/arm64/boot \
+              -name "Image.gz" 2>/dev/null | head -n1)
           fi
 
           if [ -z "$IMAGE" ]; then
-            IMAGE=$(find $PWD/$OUT_DIR/arch/arm64/boot -name "Image" 2>/dev/null | head -n1)
+            IMAGE=$(find $PWD/$OUT_DIR/arch/arm64/boot \
+              -name "Image" 2>/dev/null | head -n1)
           fi
 
           if [ -z "$IMAGE" ]; then
@@ -207,22 +253,35 @@ jobs:
           echo "Ketemu Kernel Image: $IMAGE"
 
           cd $GITHUB_WORKSPACE
-          git clone --depth=1 https://github.com/osm0sis/AnyKernel3 AnyKernel3
+
+          git clone --depth=1 \
+            https://github.com/osm0sis/AnyKernel3 \
+            AnyKernel3
+
           cp "$IMAGE" AnyKernel3/
 
-          DTB=$(find $GITHUB_WORKSPACE/$KERNEL_DIR/$OUT_DIR/arch/arm64/boot/dts -name "*.dtb" 2>/dev/null | head -n1)
+          DTB=$(find \
+            $GITHUB_WORKSPACE/$KERNEL_DIR/$OUT_DIR/arch/arm64/boot/dts \
+            -name "*.dtb" 2>/dev/null | head -n1)
+
           if [ -n "$DTB" ]; then
             cp "$DTB" AnyKernel3/dtb || true
           fi
 
-          DTBO=$(find $GITHUB_WORKSPACE/$KERNEL_DIR/$OUT_DIR/arch/arm64/boot/dtbo.img 2>/dev/null | head -n1)
+          DTBO=$(find \
+            $GITHUB_WORKSPACE/$KERNEL_DIR/$OUT_DIR/arch/arm64/boot/dtbo.img \
+            2>/dev/null | head -n1)
+
           if [ -n "$DTBO" ]; then
             cp "$DTBO" AnyKernel3/dtbo.img || true
           fi
 
           cd AnyKernel3
+
           ZIP_NAME="Kernel-${{ inputs.BUILD_USER }}-${{ inputs.USE_KSU }}-$(date +'%Y%m%d-%H%M').zip"
-          zip -r9 "$ZIP_NAME" * -x .git README.md *placeholder
+
+          zip -r9 "$ZIP_NAME" * \
+            -x .git README.md *placeholder
 
           echo "zip_path=$GITHUB_WORKSPACE/AnyKernel3/$ZIP_NAME" >> $GITHUB_OUTPUT
           echo "zip_name=$ZIP_NAME" >> $GITHUB_OUTPUT
