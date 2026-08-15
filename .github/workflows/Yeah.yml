@@ -31,10 +31,10 @@ on:
         required: true
         default: "none"
         type: choice
-        options: [none, KernelSU, KernelSU-Next, ReSukiSU]
+        options: [none, KernelSU, KernelSU-Next]
       USE_LTO:
         required: true
-        default: "none"
+        default: "full"
         type: choice
         options: [none, thin, full]
       ARCH:
@@ -90,46 +90,44 @@ jobs:
           tar -xf clang-r383902.tar.gz -C "$CLANG_DIR"
           rm clang-r383902.tar.gz
 
-      - name: Setup KernelSU / ReSukiSU
+      - name: Setup KernelSU
         if: inputs.USE_KSU != 'none'
         working-directory: ${{ env.KERNEL_DIR }}
         run: |
           if [ "${{ inputs.USE_KSU }}" == "KernelSU" ]; then
             curl -LSs https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh | bash -
-          elif [ "${{ inputs.USE_KSU }}" == "KernelSU-Next" ]; then
+          else
             curl -LSs https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh | bash -s next
-          elif [ "${{ inputs.USE_KSU }}" == "ReSukiSU" ]; then
-            curl -LSs https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh | bash -s main
           fi
 
       - name: Fix Legacy Kernel DTC & YYLLOC Issues
         working-directory: ${{ env.KERNEL_DIR }}
         run: |
-          if [ -f "scripts/dtc/dtc-parser.tab.c" ]; then
-            sed -i 's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/' scripts/dtc/dtc-parser.tab.c || true
-          fi
-          if [ -f "scripts/dtc/dtc-lexer.lex.c_shipped" ]; then
-            sed -i 's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/' scripts/dtc/dtc-lexer.lex.c_shipped || true
-          fi
+          # Fix yylloc multiple definition pada GCC 10+
+          sed -i 's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/' scripts/dtc/dtc-parser.tab.c || true
+          sed -i 's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/' scripts/dtc/dtc-lexer.lex.c_shipped || true
 
       - name: Execute Defconfig
         working-directory: ${{ env.KERNEL_DIR }}
         run: |
           export PATH="$GITHUB_WORKSPACE/$CLANG_DIR/bin:$PATH"
           make O=$OUT_DIR ARCH=arm64 CC=clang \
-            CLANG_TRIPLE=aarch64-linux-gnu- \
             CROSS_COMPILE=aarch64-linux-gnu- \
             CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
             ${{ inputs.KERNEL_DEFCONFIG }}
 
-      - name: Tweak Config
+      - name: Tweak Config untuk Performa Maksimal
         working-directory: ${{ env.KERNEL_DIR }}
         run: |
           export PATH="$GITHUB_WORKSPACE/$CLANG_DIR/bin:$PATH"
           CFG="$OUT_DIR/.config"
           SCRIPT="scripts/config"
 
-          # Matikan debug/tracing yang memperlambat performa
+          # Optimasi compiler: pakai -O3 bukan -O2/-Os, matikan optimize-for-size
+          $SCRIPT --file "$CFG" -e CC_OPTIMIZE_FOR_PERFORMANCE_O3 || true
+          $SCRIPT --file "$CFG" -d CC_OPTIMIZE_FOR_SIZE || true
+
+          # Matikan overhead debug/tracing yang nggak perlu di build harian
           $SCRIPT --file "$CFG" -d DEBUG_KERNEL || true
           $SCRIPT --file "$CFG" -d DEBUG_INFO || true
           $SCRIPT --file "$CFG" -d DEBUG_FS || true
@@ -139,7 +137,7 @@ jobs:
           $SCRIPT --file "$CFG" -d FUNCTION_TRACER || true
           $SCRIPT --file "$CFG" -d SCHEDSTATS || true
 
-          # Aktifkan HMP scheduler
+          # HMP scheduler tetap aktif (sesuai preferensi sebelumnya)
           $SCRIPT --file "$CFG" -e SCHED_HMP || true
           $SCRIPT --file "$CFG" -e SCHED_HMP_CSTATE_AWARE || true
 
@@ -150,28 +148,24 @@ jobs:
         run: |
           set -o pipefail
 
-          export PATH="$GITHUB_WORKSPACE/$CLANG_DIR/bin:$PATH"
+          export PATH="/usr/lib/ccache:$GITHUB_WORKSPACE/$CLANG_DIR/bin:$PATH"
           export ARCH=arm64
           export SUBARCH=arm64
           export HOSTCFLAGS="-fcommon"
           export HOSTCXXFLAGS="-fcommon"
-          
-          # KCFLAGS dikembalikan ke -O2 dan ditambahkan penanganan kompatibilitas Clang
-          export KCFLAGS="-O2 -fcommon -fno-strict-aliasing -fno-stack-protector -Wno-error -Wno-initializer-overrides -Wno-unused-value -Wno-format -Wno-sign-compare"
-          
+          export KCFLAGS="-O3 -fomit-frame-pointer -fno-stack-protector -Wno-error"
           export KBUILD_BUILD_USER="${{ inputs.BUILD_USER }}"
           export KBUILD_BUILD_HOST="${{ inputs.BUILD_HOST }}"
           export CC="ccache clang"
 
           MAKE_ARGS="ARCH=arm64 \
           O=$OUT_DIR \
-          CC=clang \
           CLANG_TRIPLE=aarch64-linux-gnu- \
           CROSS_COMPILE=aarch64-linux-gnu- \
           CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
           CONFIG_LOCALVERSION_AUTO=n"
 
-          if [ "${{ inputs.USE_LTO }}" == "thin" ]; then
+            if [ "${{ inputs.USE_LTO }}" == "thin" ]; then
             MAKE_ARGS="$MAKE_ARGS LTO_CLANG_THIN=1"
           elif [ "${{ inputs.USE_LTO }}" == "full" ]; then
             MAKE_ARGS="$MAKE_ARGS LTO_CLANG_FULL=1"
