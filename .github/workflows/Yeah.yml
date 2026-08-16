@@ -1,4 +1,4 @@
-name: 🤖 Build Android Kernel 4.4 (OldCam Gaming Performance + ext4 Boost)
+Name: 🤖 Build Android Kernel 4.4 (OldCam Gaming Performance + ext4 Boost)
 
 on:
   workflow_dispatch:
@@ -143,7 +143,7 @@ jobs:
             CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
             ${{ inputs.KERNEL_DEFCONFIG }}
 
-      - name: Configure Kernel (Gaming & Thermal Optimization)
+      - name: Configure Kernel (Gaming, Sensors & KernelSU)
         working-directory: ${{ env.KERNEL_DIR }}
         run: |
           export PATH="$GITHUB_WORKSPACE/$CLANG_DIR/bin:$PATH"
@@ -151,23 +151,33 @@ jobs:
           SCRIPT="scripts/config"
 
           echo "========================================"
-          echo "      KERNEL CONFIGURATION (GAMING)"
+          echo "      KERNEL CONFIGURATION (BTX v11.4)  "
           echo "========================================"
 
           # --------------------------------------------------------
-          # KernelSU (xxksu, scope-minimized, no manual hook needed)
+          # Fix Sensor Fisik & Subsystem Core (WAJIB)
+          # --------------------------------------------------------
+          $SCRIPT --file "$CFG" -e CONFIG_SENSORS || true
+          $SCRIPT --file "$CFG" -e CONFIG_SENSORS_SSC || true
+          $SCRIPT --file "$CFG" -e CONFIG_MSM_PIL || true
+          $SCRIPT --file "$CFG" -e CONFIG_MSM_PIL_SSR_GENERIC || true
+          $SCRIPT --file "$CFG" -e CONFIG_MSM_ADSP_LOADER || true
+          $SCRIPT --file "$CFG" -e CONFIG_INPUT_MISC || true
+
+          # --------------------------------------------------------
+          # KernelSU Configuration
           # --------------------------------------------------------
           $SCRIPT --file "$CFG" -e CONFIG_KSU || true
           $SCRIPT --file "$CFG" -e CONFIG_KSU_TAMPER_SYSCALL_TABLE || true
 
           # --------------------------------------------------------
-          # Optimasi Kompilator & Performa CPU High-Load
+          # Optimasi Kompilator O3 & Performance
           # --------------------------------------------------------
           $SCRIPT --file "$CFG" -e CC_OPTIMIZE_FOR_PERFORMANCE_O3 || true
           $SCRIPT --file "$CFG" -d CC_OPTIMIZE_FOR_SIZE || true
 
           # --------------------------------------------------------
-          # HMP Scheduler Tweaks (Optimasi Respons CPU untuk Game)
+          # Unified Scheduler Tweaks (OldCam & NewCam)
           # --------------------------------------------------------
           $SCRIPT --file "$CFG" -e CONFIG_SCHED_HMP || true
           $SCRIPT --file "$CFG" -e CONFIG_SCHED_HMP_CSTATE_AWARE || true
@@ -181,20 +191,19 @@ jobs:
           $SCRIPT --file "$CFG" -e CONFIG_CPU_THERMAL || true
 
           # --------------------------------------------------------
-          # Boost ext4 (Kecepatan Membaca Resource PUBG Seperti f2fs)
+          # Boost Storage ext4 & I/O Scheduler
           # --------------------------------------------------------
           $SCRIPT --file "$CFG" -e CONFIG_EXT4_FS_POSIX_ACL || true
           $SCRIPT --file "$CFG" -e CONFIG_EXT4_FS_SECURITY || true
           $SCRIPT --file "$CFG" -e CONFIG_EXT4_ENCRYPTION || true
           $SCRIPT --file "$CFG" -e CONFIG_EXT4_FS_ENCRYPTION || true
 
-          # I/O Scheduler Ringan & Responsif
           $SCRIPT --file "$CFG" -e CONFIG_IOSCHED_MAP || true
           $SCRIPT --file "$CFG" -e CONFIG_IOSCHED_ZEN || true
           $SCRIPT --file "$CFG" -e CONFIG_IOSCHED_FIOPS || true
 
           # --------------------------------------------------------
-          # Disable Debugging Overhead (Meminimalisir Stutter/Lag)
+          # Disable Overhead Debugging (Tanpa Mematikan Subsystem Hardware)
           # --------------------------------------------------------
           $SCRIPT --file "$CFG" -d CONFIG_DEBUG_KERNEL || true
           $SCRIPT --file "$CFG" -d CONFIG_DEBUG_INFO || true
@@ -208,7 +217,7 @@ jobs:
           $SCRIPT --file "$CFG" -d CONFIG_PROVE_LOCKING || true
 
           # --------------------------------------------------------
-          # Local Version & Hostname
+          # Local Version & Hostname Setup
           # --------------------------------------------------------
           if [ -n "${{ inputs.LOCALVERSION }}" ]; then
             sed -i 's/^CONFIG_LOCALVERSION=".*"/CONFIG_LOCALVERSION="'"${{ inputs.LOCALVERSION }}"'"/' "$CFG"
@@ -306,7 +315,7 @@ jobs:
           fi
 
           cd AnyKernel3
-          ZIP_NAME="Kernel-${{ inputs.BUILD_USER }}-OldCam-PUBGGaming-$(date +'%Y%m%d-%H%M').zip"
+          ZIP_NAME="BTX-v11.4-${{ inputs.BUILD_USER }}-$(date +'%Y%m%d-%H%M').zip"
 
           zip -r9 "$ZIP_NAME" * -x ".git/*" -x "README.md" -x "*placeholder"
 
