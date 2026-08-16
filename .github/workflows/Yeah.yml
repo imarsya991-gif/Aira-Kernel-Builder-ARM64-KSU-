@@ -103,10 +103,13 @@ jobs:
           git -C "$KERNEL_DIR" log -1 --oneline
           echo "========================================"
 
-      - name: Setup KernelSU (backslashxx)
+      - name: Setup KernelSU (backslashxx + Auto Hook)
         working-directory: ${{ env.KERNEL_DIR }}
         run: |
           curl -LSs "https://raw.githubusercontent.com/backslashxx/KernelSU/refs/heads/master/kernel/setup.sh" | bash -s master
+          if ! grep -q "kernelsu" drivers/Makefile; then
+            echo "obj-y += kernelsu/" >> drivers/Makefile
+          fi
 
       - name: Fix Legacy Kernel DTC & YYLLOC Issues
         working-directory: ${{ env.KERNEL_DIR }}
@@ -143,7 +146,7 @@ jobs:
             CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
             ${{ inputs.KERNEL_DEFCONFIG }}
 
-      - name: Configure Kernel (Gaming, Sensors & KernelSU)
+      - name: Configure Kernel (Gaming, Sensors & KernelSU Fix)
         working-directory: ${{ env.KERNEL_DIR }}
         run: |
           export PATH="$GITHUB_WORKSPACE/$CLANG_DIR/bin:$PATH"
@@ -155,7 +158,7 @@ jobs:
           echo "========================================"
 
           # --------------------------------------------------------
-          # Fix Sensor Fisik & Subsystem Core (WAJIB)
+          # Fix Sensor Fisik & Subsystem Core
           # --------------------------------------------------------
           $SCRIPT --file "$CFG" -e CONFIG_SENSORS || true
           $SCRIPT --file "$CFG" -e CONFIG_SENSORS_SSC || true
@@ -165,10 +168,11 @@ jobs:
           $SCRIPT --file "$CFG" -e CONFIG_INPUT_MISC || true
 
           # --------------------------------------------------------
-          # KernelSU Configuration
+          # Fix KernelSU Root & Mount Permissions
           # --------------------------------------------------------
           $SCRIPT --file "$CFG" -e CONFIG_KSU || true
           $SCRIPT --file "$CFG" -e CONFIG_KSU_TAMPER_SYSCALL_TABLE || true
+          $SCRIPT --file "$CFG" -e CONFIG_OVERLAY_FS || true
 
           # --------------------------------------------------------
           # Optimasi Kompilator O3 & Performance
@@ -203,7 +207,7 @@ jobs:
           $SCRIPT --file "$CFG" -e CONFIG_IOSCHED_FIOPS || true
 
           # --------------------------------------------------------
-          # Disable Overhead Debugging (Tanpa Mematikan Subsystem Hardware)
+          # Disable Debugging Overhead
           # --------------------------------------------------------
           $SCRIPT --file "$CFG" -d CONFIG_DEBUG_KERNEL || true
           $SCRIPT --file "$CFG" -d CONFIG_DEBUG_INFO || true
