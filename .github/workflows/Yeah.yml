@@ -1,4 +1,4 @@
-Name: 🤖 Build Android Kernel 4.4 (OldCam Gaming Performance + ext4 Boost)
+name: 🤖 Build Android Kernel 4.4 (OldCam Gaming Performance + ext4 Boost)
 
 on:
   workflow_dispatch:
