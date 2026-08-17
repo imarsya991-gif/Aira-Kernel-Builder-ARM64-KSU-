@@ -6,7 +6,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-22.04
-    timeout-minutes: 90
+    timeout-minutes: 120
 
     steps:
       - name: Checkout
@@ -15,7 +15,9 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y bc bison flex libssl-dev libncurses-dev libelf-dev dwarves zip curl wget git python3 ccache
+          sudo apt-get install -y \
+            bc bison flex libssl-dev libncurses-dev libelf-dev dwarves zip curl wget git python3 ccache \
+            lz4 device-tree-compiler gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi
 
       - name: Setup Clang
         run: |
@@ -32,11 +34,14 @@ jobs:
           export SUBARCH=arm64
           export CC=clang
           export CLANG_TRIPLE=aarch64-linux-gnu-
-          export CROSS_COMPILE=llvm-
-          export CROSS_COMPILE_ARM32=llvm-
+          export CROSS_COMPILE=aarch64-linux-android-
+          export CROSS_COMPILE_ARM32=arm-linux-androideabi-
 
           make O=out tama_apollo_defconfig
-          make O=out -j$(nproc)
+          make O=out -j8
+
+      - name: List build output
+        run: ls -lh out/arch/arm64/boot/
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
