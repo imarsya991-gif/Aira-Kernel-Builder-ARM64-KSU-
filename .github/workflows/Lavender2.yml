@@ -18,7 +18,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             bc bison flex libssl-dev libncurses-dev libelf-dev \
-            dwarves zip curl wget git python3 ccache xz-utils
+            dwarves zip curl wget git python3 ccache xz-utils \
+            build-essential pkg-config libglib2.0-dev
 
       - name: Setup Clang (stable r416183b)
         run: |
@@ -35,11 +36,12 @@ jobs:
           wget -q https://developer.arm.com/-/media/Files/downloads/gnu-a/10.3-2021.07/binrel/gcc-arm-10.3-2021.07-x86_64-arm-none-eabi.tar.xz -O gcc-arm32.tar.xz
           tar xf gcc-arm32.tar.xz --strip-components=1
           rm gcc-arm32.tar.xz
+          ln -s $HOME/gcc-arm32/bin/arm-none-eabi-gcc $HOME/gcc-arm32/bin/arm-linux-androideabi-gcc || true
+          ln -s $HOME/gcc-arm32/bin/arm-none-eabi-ld $HOME/gcc-arm32/bin/arm-linux-androideabi-ld || true
 
       - name: Patch Kernel with xxksu
         run: |
           cd kernel
-          # credit @linx3141
           curl -LSs "https://raw.githubusercontent.com/backslashxx/KernelSU/refs/heads/master/kernel/setup.sh" | bash -s master
 
       - name: Build Kernel
@@ -51,12 +53,12 @@ jobs:
           export CC=clang
           export CLANG_TRIPLE=aarch64-linux-gnu-
           export CROSS_COMPILE=aarch64-linux-android-
-          export CROSS_COMPILE_ARM32=arm-none-eabi-
+          export CROSS_COMPILE_ARM32=arm-linux-androideabi-
 
           make O=out lavender-perf_defconfig
-          make O=out -j$(nproc)
+          make O=out -j$(nproc) | tee build.log
 
-      - name: Upload Artifact
+      - name: Upload Kernel Artifact
         uses: actions/upload-artifact@v4
         with:
           name: Kernel-4.4-Lavender-Perf-HMP-xxksu
@@ -65,3 +67,9 @@ jobs:
             kernel/out/arch/arm64/boot/Image.gz-dtb
             kernel/out/arch/arm64/boot/dts/qcom/*.dtb
             kernel/out/arch/arm64/boot/dts/qcom/*.dtbo
+
+      - name: Upload Build Log
+        uses: actions/upload-artifact@v4
+        with:
+          name: Build-Log
+          path: kernel/build.log
