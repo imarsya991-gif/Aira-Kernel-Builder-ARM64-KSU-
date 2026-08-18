@@ -12,6 +12,12 @@ jobs:
       - name: Set up job
         run: echo "Starting kernel build workflow..."
 
+      - name: Telegram: Notify build start
+        run: |
+          curl -s -X POST https://api.telegram.org/bot${{ secrets.TG_BOT_TOKEN }}/sendMessage \
+            -d chat_id=${{ secrets.TG_CHAT_ID }} \
+            -d text="🚀 Build Kernel 4.4 Lavender Non-GKI dimulai!"
+
       - name: Free disk space
         run: |
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL || true
@@ -26,6 +32,7 @@ jobs:
 
       - name: Setup ccache
         run: |
+          mkdir -p ~/.ccache
           echo "max_size = 5.0G" > ~/.ccache/ccache.conf
           ccache -M 5G
 
@@ -90,3 +97,25 @@ jobs:
         with:
           name: Build-Log
           path: kernel/build.log
+
+      - name: Telegram: Send file
+        if: success()
+        run: |
+          curl -s -X POST https://api.telegram.org/bot${{ secrets.TG_BOT_TOKEN }}/sendDocument \
+            -F chat_id=${{ secrets.TG_CHAT_ID }} \
+            -F document=@Kernel-4.4-Lavender-NonGKI-xxksu.zip \
+            -F caption="📦 Kernel 4.4 Lavender Non-GKI berhasil dibuild!"
+
+      - name: Telegram: Notify build success
+        if: success()
+        run: |
+          curl -s -X POST https://api.telegram.org/bot${{ secrets.TG_BOT_TOKEN }}/sendMessage \
+            -d chat_id=${{ secrets.TG_CHAT_ID }} \
+            -d text="✅ Build Kernel 4.4 Lavender Non-GKI sukses!"
+
+      - name: Telegram: Notify build failed
+        if: failure()
+        run: |
+          curl -s -X POST https://api.telegram.org/bot${{ secrets.TG_BOT_TOKEN }}/sendMessage \
+            -d chat_id=${{ secrets.TG_CHAT_ID }} \
+            -d text="❌ Build Kernel 4.4 Lavender Non-GKI gagal!"
