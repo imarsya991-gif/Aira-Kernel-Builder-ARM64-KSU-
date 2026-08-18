@@ -59,14 +59,18 @@ jobs:
           make O=out -j$(nproc) | tee build.log
 
       - name: Debug Output
-        run: ls -R kernel/out/arch/arm64/boot || true
+        run: ls -R kernel/out || true
 
       - name: Ensure Image.gz-dtb
         run: |
-          cd kernel/out/arch/arm64/boot
-          if [ ! -f Image.gz-dtb ]; then
-            echo "Image.gz-dtb not found, creating manually..."
-            cat Image.gz *.dtb > Image.gz-dtb
+          if [ -d kernel/out/arch/arm64/boot ]; then
+            cd kernel/out/arch/arm64/boot
+            if [ ! -f Image.gz-dtb ]; then
+              echo "Image.gz-dtb not found, creating manually..."
+              cat Image.gz *.dtb > Image.gz-dtb
+            fi
+          else
+            echo "Boot folder not found, build must have failed earlier."
           fi
 
       - name: Upload Kernel Artifact
@@ -82,7 +86,7 @@ jobs:
       - name: Pack AnyKernel3
         run: |
           git clone https://github.com/osm0sis/AnyKernel3.git AnyKernel3
-          cp kernel/out/arch/arm64/boot/Image.gz-dtb AnyKernel3/
+          cp kernel/out/arch/arm64/boot/Image.gz-dtb AnyKernel3/ || true
           cd AnyKernel3
           zip -r9 ../Kernel-4.4-Lavender-Perf-HMP-xxksu.zip *
 
@@ -97,3 +101,9 @@ jobs:
         with:
           name: Build-Log
           path: kernel/build.log
+
+      - name: Upload Full Out Folder
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kernel-Out-Folder
+          path: kernel/out
