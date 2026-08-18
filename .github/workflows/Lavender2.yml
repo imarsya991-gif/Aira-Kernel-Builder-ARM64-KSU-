@@ -12,14 +12,13 @@ jobs:
       - name: Checkout Lavender Kernel
         run: |
           git clone https://github.com/stormbreaker-project/kernel_xiaomi_lavender.git kernel
-          cd kernel
 
       - name: Install dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y \
             bc bison flex libssl-dev libncurses-dev libelf-dev \
-            dwarves zip curl wget git python3 ccache
+            dwarves zip curl wget git python3 ccache xz-utils
 
       - name: Setup Clang (stable r416183b)
         run: |
@@ -28,6 +27,14 @@ jobs:
           wget -q https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android12-release/clang-r416183b.tar.gz -O clang.tar.gz
           tar xf clang.tar.gz
           rm clang.tar.gz
+
+      - name: Setup GCC ARM32
+        run: |
+          mkdir -p $HOME/gcc-arm32
+          cd $HOME/gcc-arm32
+          wget -q https://developer.arm.com/-/media/Files/downloads/gnu-a/10.3-2021.07/binrel/gcc-arm-10.3-2021.07-x86_64-arm-none-eabi.tar.xz -O gcc-arm32.tar.xz
+          tar xf gcc-arm32.tar.xz --strip-components=1
+          rm gcc-arm32.tar.xz
 
       - name: Patch Kernel with xxksu
         run: |
@@ -38,36 +45,13 @@ jobs:
       - name: Build Kernel
         run: |
           cd kernel
-          export PATH=$HOME/clang/bin:$PATH
+          export PATH=$HOME/clang/bin:$HOME/gcc-arm32/bin:$PATH
           export ARCH=arm64
           export SUBARCH=arm64
           export CC=clang
           export CLANG_TRIPLE=aarch64-linux-gnu-
           export CROSS_COMPILE=aarch64-linux-android-
-          export CROSS_COMPILE_ARM32=arm-linux-androideabi-
-
-          make O=out lavender-perf_defconfig
-          make O=out -j$(nproc)
-
-      - name: Upload Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: Kernel-4.4-Lavender-Perf-HMP-xxksu
-          path: |
-            kernel/out/arch/arm64/boot/Image.gz
-            kernel/out/arch/arm64/boot/Image.gz-dtb
-            kernel/out/arch/arm64/boot/dts/qcom/*.dtb
-            kernel/out/arch/arm64/boot/dts/qcom/*.dtbo
-      - name: Build Kernel
-        run: |
-          cd kernel
-          export PATH=$HOME/clang/bin:$PATH
-          export ARCH=arm64
-          export SUBARCH=arm64
-          export CC=clang
-          export CLANG_TRIPLE=aarch64-linux-gnu-
-          export CROSS_COMPILE=llvm-
-          export CROSS_COMPILE_ARM32=llvm-
+          export CROSS_COMPILE_ARM32=arm-none-eabi-
 
           make O=out lavender-perf_defconfig
           make O=out -j$(nproc)
