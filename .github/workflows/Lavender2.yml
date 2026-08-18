@@ -46,13 +46,13 @@ jobs:
           export CROSS_COMPILE=llvm-
           export CROSS_COMPILE_ARM32=llvm-
 
-          make O=out lavender_defconfig
+          make O=out lavender-perf_defconfig
           make O=out -j$(nproc)
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Kernel-4.4-Lavender-Oldcam-HMP-xxksu
+          name: Kernel-4.4-Lavender-Perf-HMP-xxksu
           path: |
             kernel/out/arch/arm64/boot/Image.gz
             kernel/out/arch/arm64/boot/Image.gz-dtb
