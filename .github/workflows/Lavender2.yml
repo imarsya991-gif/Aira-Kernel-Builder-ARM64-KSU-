@@ -61,12 +61,25 @@ jobs:
       - name: Upload Kernel Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Kernel-4.4-Lavender-Perf-HMP-xxksu
+          name: Kernel-Images
           path: |
             kernel/out/arch/arm64/boot/Image.gz
             kernel/out/arch/arm64/boot/Image.gz-dtb
             kernel/out/arch/arm64/boot/dts/qcom/*.dtb
             kernel/out/arch/arm64/boot/dts/qcom/*.dtbo
+
+      - name: Pack AnyKernel3
+        run: |
+          git clone https://github.com/osm0sis/AnyKernel3.git AnyKernel3
+          cp kernel/out/arch/arm64/boot/Image.gz-dtb AnyKernel3/
+          cd AnyKernel3
+          zip -r9 ../Kernel-4.4-Lavender-Perf-HMP-xxksu.zip *
+
+      - name: Upload Flashable Zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kernel-Flashable-Zip
+          path: Kernel-4.4-Lavender-Perf-HMP-xxksu.zip
 
       - name: Upload Build Log
         uses: actions/upload-artifact@v4
