@@ -58,6 +58,17 @@ jobs:
           make O=out lavender-perf_defconfig
           make O=out -j$(nproc) | tee build.log
 
+      - name: Debug Output
+        run: ls -R kernel/out/arch/arm64/boot || true
+
+      - name: Ensure Image.gz-dtb
+        run: |
+          cd kernel/out/arch/arm64/boot
+          if [ ! -f Image.gz-dtb ]; then
+            echo "Image.gz-dtb not found, creating manually..."
+            cat Image.gz *.dtb > Image.gz-dtb
+          fi
+
       - name: Upload Kernel Artifact
         uses: actions/upload-artifact@v4
         with:
