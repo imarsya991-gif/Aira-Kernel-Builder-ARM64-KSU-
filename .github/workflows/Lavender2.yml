@@ -10,10 +10,9 @@ jobs:
 
     steps:
       - name: Checkout Lavender Kernel
-        uses: actions/checkout@v4
-        with:
-          repository: stormbreaker-project/kernel_xiaomi_lavender
-          ref: master
+        run: |
+          git clone https://github.com/stormbreaker-project/kernel_xiaomi_lavender.git kernel
+          cd kernel
 
       - name: Install dependencies
         run: |
@@ -32,11 +31,13 @@ jobs:
 
       - name: Patch Kernel with xxksu
         run: |
+          cd kernel
           # credit @linx3141
           curl -LSs "https://raw.githubusercontent.com/backslashxx/KernelSU/refs/heads/master/kernel/setup.sh" | bash -s master
 
       - name: Build Kernel
         run: |
+          cd kernel
           export PATH=$HOME/clang/bin:$PATH
           export ARCH=arm64
           export SUBARCH=arm64
@@ -53,7 +54,7 @@ jobs:
         with:
           name: Kernel-4.4-Lavender-Oldcam-HMP-xxksu
           path: |
-            out/arch/arm64/boot/Image.gz
-            out/arch/arm64/boot/Image.gz-dtb
-            out/arch/arm64/boot/dts/qcom/*.dtb
-            out/arch/arm64/boot/dts/qcom/*.dtbo
+            kernel/out/arch/arm64/boot/Image.gz
+            kernel/out/arch/arm64/boot/Image.gz-dtb
+            kernel/out/arch/arm64/boot/dts/qcom/*.dtb
+            kernel/out/arch/arm64/boot/dts/qcom/*.dtbo
