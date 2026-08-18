@@ -12,7 +12,7 @@ jobs:
       - name: Set up job
         run: echo "Starting kernel build workflow..."
 
-      - name: Telegram: Notify build start
+      - name:Telegram: Notify build start
         run: |
           curl -s -X POST "https://api.telegram.org/bot${{ secrets.TG_BOT_TOKEN }}/sendMessage" \
             -d chat_id="${{ secrets.TG_CHAT_ID }}" \
