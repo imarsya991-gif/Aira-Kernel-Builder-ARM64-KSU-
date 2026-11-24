@@ -1,4 +1,4 @@
-name: Build XPE Lavender (LLVM 22)
+name: Build XPE Lavender (Clang 22 Real)
 
 on:
   workflow_dispatch:
@@ -15,21 +15,55 @@ jobs:
           ref: xpe-15.0
           path: kernel
 
-      - name: Build Kernel with LLVM 22
-        uses: dabao1955/kernel_build_action@main
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bc bison build-essential ccache curl flex g++-multilib gcc-multilib git gnupg gperf imagemagick lib32ncurses5-dev lib32readline-dev lib32z1-dev libelf-dev liblz4-tool libncurses5 libncurses5-dev libsdl1.2-dev libssl-dev libxml2 libxml2-utils lzop pngcrush rsync schedtool squashfs-tools xsltproc zip zlib1g-dev python3
+
+      - name: Download Clang 22 (LLVM 22.1.2)
+        run: |
+          # Unduh langsung pakai wget (bebas blokir)
+          wget -q https://github.com/llvm/llvm-project/releases/download/llvmorg-22.1.2/LLVM-22.1.2-Linux-X64.tar.xz
+          
+          # Ekstrak ke folder clang
+          mkdir -p $GITHUB_WORKSPACE/clang
+          tar -xf LLVM-22.1.2-Linux-X64.tar.xz -C $GITHUB_WORKSPACE/clang --strip-components=1
+          
+          # Masukkan ke PATH
+          echo "$GITHUB_WORKSPACE/clang/bin" >> $GITHUB_PATH
+
+      - name: Build Kernel
+        run: |
+          cd kernel
+          export ARCH=arm64
+          export SUBARCH=arm64
+          export CC=clang
+          export CROSS_COMPILE=aarch64-linux-gnu-
+          export CROSS_COMPILE_ARM32=arm-linux-gnueabi-
+          export LLVM=1
+          export LLVM_IAS=1
+
+          # Siapkan config
+          make O=out ARCH=arm64 lavender_defconfig
+          
+          # Mulai compile (pakai semua core CPU runner)
+          make -j$(nproc --all) O=out ARCH=arm64 LLVM=1 LLVM_IAS=1
+
+      - name: Package with AnyKernel3
+        if: success()
+        run: |
+          # Clone AnyKernel3
+          git clone --depth=1 https://github.com/osm0sis/AnyKernel3.git anykernel
+          
+          # Copy hasil kernel (biasanya Image.gz-dtb untuk sdm660)
+          cp kernel/out/arch/arm64/boot/Image.gz-dtb anykernel/ || cp kernel/out/arch/arm64/boot/Image.gz anykernel/
+          
+          # Bikin file zip flashable
+          cd anykernel
+          zip -r ../XPE-Lavender-Clang22.zip *
+
+      - name: Upload Kernel Artifact
+        uses: actions/upload-artifact@v4
         with:
-          kernel-url: TheXPerienceProject/android_kernel_xiaomi_lavender
-          kernel-branch: xpe-15.0
-          kernel-dir: kernel
-          config: lavender_defconfig
-          arch: arm64
-          
-          # Matikan toolchain AOSP bawaan
-          aosp-gcc: true
-          aosp-clang: false
-          
-          # Menggunakan rilis resmi LLVM 22.1.2 dari GitHub
-          other-clang-url: https://github.com/llvm/llvm-project/releases/download/llvmorg-22.1.2/LLVM-22.1.2-Linux-X64.tar.xz
-          
-          disable-lto: true
-          anykernel3: true
+          name: XPE-Lavender-Clang22
+          path: XPE-Lavender-Clang22.zip
