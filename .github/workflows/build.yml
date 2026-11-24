@@ -1,11 +1,13 @@
 name: Build XPE Lavender (Clang 22)
 
 on:
-  workflow_dispatch:
+  workflow_dispatch:   # Bisa dijalankan manual dari tab Actions
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    # Wajib menggunakan 22.04 karena libpcre3-dev sudah dihapus di 24.04
+    runs-on: ubuntu-22.04 
+    
     steps:
       - name: Checkout kernel source
         uses: actions/checkout@v4
@@ -20,11 +22,11 @@ jobs:
           kernel-url: TheXPerienceProject/android_kernel_xiaomi_lavender
           kernel-branch: xpe-15.0
           kernel-dir: kernel
-          config: lavender_defconfig   # Bisa ganti ke Yuki_defconfig jika mau
+          config: lavender_defconfig   # Defconfig untuk Redmi Note 7
           arch: arm64
           aosp-gcc: true
           aosp-clang: true
-          android-version: 14          # Android 14 (Clang 22)
+          android-version: 14          # Android 14 merujuk ke Clang 22
           aosp-clang-version: r596125  # Clang 22.0.2
           disable-lto: true
-          anykernel3: true             # Opsional: agar langsung jadi file flashable zip
+          anykernel3: true             # Opsional: Hasil build akan berupa zip AnyKernel3
