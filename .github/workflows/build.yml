@@ -1,4 +1,4 @@
-name: Build XPE Lavender (AOSP Clang 22)
+name: Build XPE Lavender (Custom Clang 22)
 
 on:
   workflow_dispatch:
@@ -15,7 +15,7 @@ jobs:
           ref: xpe-15.0
           path: kernel
 
-      - name: Build Kernel with AOSP Clang 22
+      - name: Build Kernel with Custom Clang 22
         uses: dabao1955/kernel_build_action@main
         with:
           kernel-url: TheXPerienceProject/android_kernel_xiaomi_lavender
@@ -24,12 +24,12 @@ jobs:
           config: lavender_defconfig
           arch: arm64
           
-          # Gunakan toolchain kustom, bukan AOSP bawaan
+          # Matikan unduhan Clang AOSP bawaan
           aosp-gcc: true
           aosp-clang: false
           
-          # Tautan unduhan langsung untuk Clang 22.0.2 (r596125) dari AOSP
-          other-clang-url: https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/master/clang-r596125.tar.gz
+          # Gunakan Clang 22 dari ZyCromerZ (via GitHub Release)
+          other-clang-url: https://github.com/ZyCromerZ/Clang/releases/download/22.0.0-20250914/Clang-22.0.0-20250914.tar.gz
           
           disable-lto: true
           anykernel3: true
