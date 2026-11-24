@@ -1,4 +1,4 @@
-name: Build XPE Lavender (AOSP Clang 22)
+name: Build XPE Lavender (LLVM 22)
 
 on:
   workflow_dispatch:
@@ -15,7 +15,7 @@ jobs:
           ref: xpe-15.0
           path: kernel
 
-      - name: Build Kernel with AOSP Clang 22
+      - name: Build Kernel with LLVM 22
         uses: dabao1955/kernel_build_action@main
         with:
           kernel-url: TheXPerienceProject/android_kernel_xiaomi_lavender
@@ -24,12 +24,12 @@ jobs:
           config: lavender_defconfig
           arch: arm64
           
-          # Matikan pengunduh Clang bawaan action
+          # Matikan toolchain AOSP bawaan
           aosp-gcc: true
           aosp-clang: false
           
-          # Tautan unduhan langsung untuk Clang 22.0.2 (r596125) dari AOSP
-          other-clang-url: https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/main/clang-r596125.tar.gz
+          # Menggunakan rilis resmi LLVM 22.1.2 dari GitHub
+          other-clang-url: https://github.com/llvm/llvm-project/releases/download/llvmorg-22.1.2/LLVM-22.1.2-Linux-X64.tar.xz
           
           disable-lto: true
           anykernel3: true
